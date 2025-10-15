@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="cyber-card rounded-lg p-4 flex items-center">
+        <div class="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center mr-4">
+            <i data-feather="globe" class="text-blue-400"></i>
+        </div>
+        <div>
+            <p class="text-xs text-slate-400">Network Devices</p>
+            <p class="text-xl font-mono" id="totalDevices">0</p>
+        </div>
+    </div>
+    <div class="cyber-card rounded-lg p-4 flex items-center">
+        <div class="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center mr-4">
+            <i data-feather="wifi" class="text-emerald-400"></i>
+        </div>
+        <div>
+            <p class="text-xs text-slate-400">Active Now</p>
+            <p class="text-xl font-mono" id="activeDevices">0</p>
+        </div>
+    </div>
+    <div class="cyber-card rounded-lg p-4 flex items-center">
+        <div class="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center mr-4">
+            <i data-feather="alert-circle" class="text-amber-400"></i>
+        </div>
+        <div>
+            <p class="text-xs text-slate-400">Critical Alerts</p>
+            <p class="text-xl font-mono" id="criticalAlerts">0</p>
+        </div>
+    </div>
+    <div class="cyber-card rounded-lg p-4 flex items-center">
+        <div class="w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center mr-4">
+            <i data-feather="shield" class="text-violet-400"></i>
+        </div>
+        <div>
+            <p class="text-xs text-slate-400">Trusted</p>
+            <p class="text-xl font-mono" id="trustedDevices">0</p>
+        </div>
+    </div>
+</div>
+
+<div class="cyber-card rounded-lg p-4 network-graph">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-medium">Network Activity (24h)</h2>
+    </div>
+    <div class="h-64 bg-slate-900/50 rounded-lg border border-slate-800">
+        <canvas id="networkChart"></canvas>
+    </div>
+</div>
+
+<div class="cyber-card rounded-lg p-4">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-medium">Recent Alerts</h2>
+    </div>
+    <div id="alertsList" class="space-y-2">
+        <p class="text-slate-400 text-sm">No alerts</p>
+    </div>
+</div>
+
+<div class="cyber-card rounded-lg p-4">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-medium">Active Devices</h2>
+    </div>
+    <div id="devicesList" class="space-y-2">
+        <p class="text-slate-400 text-sm">No devices detected</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% block title %}Rules Management{% endblock %}
+
+{% block content %}
+<div class="cyber-card rounded-lg p-4 mb-4">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-medium">Security Rules</h2>
+        <button onclick="showAddRuleModal()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded flex items-center gap-2">
+            <i data-feather="plus" class="w-4 h-4"></i>
+            Add Custom Rule
+        </button>
+    </div>
+
+    <div id="rulesContainer">
+        <div class="text-center text-slate-400 py-8">Loading rules...</div>
+    </div>
+</div>
+
+<!-- Add Rule Modal -->
+<div id="addRuleModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div class="bg-slate-900 rounded-lg p-6 w-full max-w-md border border-slate-700">
+        <h3 class="text-lg font-medium mb-4">Add Custom Rule</h3>
+        
+        <form id="addRuleForm" onsubmit="addRule(event)">
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm text-slate-400">Rule Name</label>
+                    <input type="text" id="ruleName" required 
+                           class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2"
+                           placeholder="e.g., High Traffic Alert">
+                </div>
+
+                <div>
+                    <label class="text-sm text-slate-400">Condition</label>
+                    <select id="ruleCondition" required
+                            class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2">
+                        <option value="device_first_seen">New Device Detected</option>
+                        <option value="reconnect_count">Frequent Reconnections</option>
+                        <option value="inactive_duration">Device Inactive</option>
+                        <option value="mac_pattern">Suspicious MAC</option>
+                        <option value="ip_changed">IP Address Changed</option>
+                        <option value="vendor_unknown">Unknown Vendor</option>
+                        <option value="custom">Custom Condition</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="text-sm text-slate-400">Threshold</label>
+                    <input type="number" id="ruleThreshold" value="1" min="1" 
+                           class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2">
+                    <p class="text-xs text-slate-500 mt-1">Number of occurrences before alert triggers</p>
+                </div>
+
+                <div>
+                    <label class="text-sm text-slate-400">Severity</label>
+                    <select id="ruleSeverity" 
+                            class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2">
+                        <option value="low">Low</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="high">High</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex gap-3 mt-6">
+                <button type="button" onclick="hideAddRuleModal()" 
+                        class="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded">
+                    Cancel
+                </button>
+                <button type="submit" 
+                        class="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded">
+                    Add Rule
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function loadRules() {
+    fetch('/api/rules')
+        .then(res => res.json())
+        .then(data => {
+            const container = document.getElementById('rulesContainer');
+            if (data.success && data.data.length > 0) {
+                container.innerHTML = `
+                    <table class="w-full text-sm">
+                        <thead class="text-slate-400 border-b border-slate-800">
+                            <tr>
+                                <th class="pb-2 text-left">Rule Name</th>
+                                <th class="pb-2 text-left">Condition</th>
+                                <th class="pb-2 text-left">Threshold</th>
+                                <th class="pb-2 text-left">Severity</th>
+                                <th class="pb-2 text-left">Status</th>
+                                <th class="pb-2 text-left">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800">
+                            ${data.data.map(rule => `
+                                <tr>
+                                    <td class="py-3 font-medium">${rule.name}</td>
+                                    <td class="py-3 text-slate-400">${rule.condition}</td>
+                                    <td class="py-3">${rule.threshold}</td>
+                                    <td class="py-3">
+                                        <span class="px-2 py-1 rounded text-xs ${getSeverityClass(rule.severity)}">
+                                            ${rule.severity.toUpperCase()}
+                                        </span>
+                                    </td>
+                                    <td class="py-3">
+                                        <button onclick="toggleRule(${rule.id}, ${rule.enabled})" 
+                                                class="px-3 py-1 rounded text-xs ${rule.enabled ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-700 hover:bg-slate-600'}">
+                                            ${rule.enabled ? 'Enabled' : 'Disabled'}
+                                        </button>
+                                    </td>
+                                    <td class="py-3">
+                                        <button onclick="deleteRule(${rule.id}, '${rule.name}')" 
+                                                class="text-red-400 hover:text-red-300">
+                                            <i data-feather="trash-2" class="w-4 h-4"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+                feather.replace();
+            } else {
+                container.innerHTML = '<div class="text-center text-slate-400 py-8">No rules configured</div>';
+            }
+        });
+}
+
+function showAddRuleModal() {
+    document.getElementById('addRuleModal').classList.remove('hidden');
+}
+
+function hideAddRuleModal() {
+    document.getElementById('addRuleModal').classList.add('hidden');
+    document.getElementById('addRuleForm').reset();
+}
+
+function addRule(event) {
+    event.preventDefault();
+    
+    const ruleData = {
+        name: document.getElementById('ruleName').value,
+        condition: document.getElementById('ruleCondition').value,
+        threshold: parseInt(document.getElementById('ruleThreshold').value),
+        severity: document.getElementById('ruleSeverity').value,
+        rule_type: 'device_event'
+    };
+    
+    fetch('/api/rules/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ruleData)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Rule added successfully!', 'success');
+            hideAddRuleModal();
+            loadRules();
+        } else {
+            showNotification('Error: ' + data.error, 'error');
+        }
+    });
+}
+
+function toggleRule(ruleId, currentlyEnabled) {
+    const newState = currentlyEnabled ? 0 : 1;
+    
+    fetch(`/api/rules/${ruleId}/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: newState })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(newState ? 'Rule enabled' : 'Rule disabled', 'success');
+            loadRules();
+        }
+    });
+}
+
+function deleteRule(ruleId, ruleName) {
+    if (!confirm(`Delete rule "${ruleName}"?`)) {
+        return;
+    }
+    
+    fetch(`/api/rules/${ruleId}`, {
+        method: 'DELETE'
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Rule deleted', 'success');
+            loadRules();
+        }
+    });
+}
+
+function getSeverityClass(severity) {
+    const classes = {
+        'high': 'bg-red-500/20 text-red-400',
+        'medium': 'bg-amber-500/20 text-amber-400',
+        'low': 'bg-blue-500/20 text-blue-400'
+    };
+    return classes[severity] || 'bg-slate-500/20 text-slate-400';
+}
+
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 right-4 px-4 py-3 rounded shadow-lg ${
+        type === 'success' ? 'bg-emerald-500' : 'bg-red-500'
+    } text-white z-50`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => notification.remove(), 3000);
+}
+
+loadRules();
+setInterval(loadRules, 30000);
+</script>
+{% endblock %}

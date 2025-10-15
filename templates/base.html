@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}NetWatch SIEM{% endblock %} | Network Monitoring</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/feather-icons"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cyber-theme.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body class="min-h-screen bg-darker">
+    <header class="bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-700">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <button id="menuToggle" class="lg:hidden text-slate-300 hover:text-white mr-3">
+                    <i data-feather="menu" class="w-6 h-6"></i>
+                </button>
+                <i data-feather="shield" class="text-blue-500"></i>
+                <h1 class="text-lg md:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-emerald-400">
+                    NetWatch SIEM
+                </h1>
+            </div>
+            <div class="flex items-center space-x-2 md:space-x-4">
+                <div class="hidden md:block text-sm">
+                    <span class="text-slate-400">Last scan:</span>
+                    <span class="font-mono text-emerald-400" id="lastScanTime">Live scanning...</span>
+                </div>
+                <button id="scanNowBtn" class="px-2 md:px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs md:text-sm">
+                   Run Scan
+                </button>
+                <a href="/logout" class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center hover:bg-slate-600">
+                    <i data-feather="log-out" class="w-4 h-4"></i>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <div id="mobileMenu" class="lg:hidden fixed inset-0 bg-black/50 z-50 hidden">
+        <div class="bg-slate-900 w-64 h-full p-4">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-lg font-bold text-blue-400">Menu</h2>
+                <button id="menuClose" class="text-slate-400 hover:text-white">
+                    <i data-feather="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <nav class="space-y-4">
+                <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
+                    <i data-feather="activity"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="/devices" class="nav-item {% if request.path == '/devices' %}active{% endif %}">
+                    <i data-feather="list"></i>
+                    <span>Devices</span>
+                </a>
+                <a href="/alerts" class="nav-item {% if request.path == '/alerts' %}active{% endif %}">
+                    <i data-feather="alert-triangle"></i>
+                    <span>Alerts</span>
+                    <span class="ml-auto bg-red-500 text-white text-xs px-2 py-1 rounded-full" id="mobileAlertCount">0</span>
+                </a>
+                <a href="/logs" class="nav-item {% if request.path == '/logs' %}active{% endif %}">
+                    <i data-feather="clock"></i>
+                    <span>Event Logs</span>
+                </a>
+                <a href="/config" class="nav-item {% if request.path == '/config' %}active{% endif %}">
+                    <i data-feather="settings"></i>
+                    <span>System Configuration</span>
+                </a>
+            </nav>
+            
+            <div class="mt-8 cyber-card rounded-lg p-4">
+                <h3 class="text-sm font-medium text-slate-400 mb-2">Network Summary</h3>
+                <div class="space-y-2">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-400">Devices Online</span>
+                        <span class="font-mono text-emerald-400" id="mobileOnlineCount">0</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-400">Total Devices</span>
+                        <span class="font-mono text-blue-400" id="mobileTotalCount">0</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-400">Active Alerts</span>
+                        <span class="font-mono text-red-400" id="mobileAlertsCount">0</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-400">New Today</span>
+                        <span class="font-mono text-amber-400" id="mobileNewTodayCount">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <aside class="hidden lg:block lg:col-span-1 cyber-card rounded-lg p-4 h-fit">
+            <nav class="space-y-4">
+                <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
+                    <i data-feather="activity"></i>
+                    <span>NetWatch SIEM Dashboard</span>
+                </a>
+                <a href="/devices" class="nav-item {% if request.path == '/devices' %}active{% endif %}">
+                    <i data-feather="list"></i>
+                    <span>Devices</span>
+                </a>
+                <a href="/alerts" class="nav-item {% if request.path == '/alerts' %}active{% endif %}">
+                    <i data-feather="alert-triangle"></i>
+                    <span style="color: red;">Alerts</span>
+                    <span class="ml-auto bg-red-500 text-white text-xs px-2 py-1 rounded-full" id="alertCount">0</span>
+                </a>
+                <a href="/logs" class="nav-item {% if request.path == '/logs' %}active{% endif %}">
+                    <i data-feather="clock"></i>
+                    <span>Event Logs</span>
+                </a>
+                <a href="/config" class="nav-item {% if request.path == '/config' %}active{% endif %}">
+                    <i data-feather="settings"></i>
+                    <span>System Configuration</span>
+                </a>
+                <a href="{{ url_for('rules_page') }}" class="nav-item">
+                    <i data-feather="shield"></i>
+                    <span>System Rules</span>
+                </a>
+            </nav>
+            
+            <div class="mt-8 cyber-card rounded-lg p-4">
+                <h3 class="text-sm font-medium text-slate-400 mb-2">Network Summary</h3>
+                <div class="space-y-2">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-400">Devices Online</span>
+                        <span class="font-mono text-emerald-400" id="onlineCount">0</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-400">Total Devices</span>
+                        <span class="font-mono text-blue-400" id="totalCount">0</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-400">Active Alerts</span>
+                        <span class="font-mono text-red-400" id="alertsCount">0</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-400">New Today</span>
+                        <span class="font-mono text-amber-400" id="newTodayCount">0</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="lg:col-span-3 space-y-6">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script>
+        feather.replace();
+        
+        const menuToggle = document.getElementById('menuToggle');
+        const menuClose = document.getElementById('menuClose');
+        const mobileMenu = document.getElementById('mobileMenu');
+        
+        menuToggle.addEventListener('click', () => {
+            mobileMenu.classList.remove('hidden');
+            setTimeout(() => feather.replace(), 10);
+        });
+        
+        menuClose.addEventListener('click', () => {
+            mobileMenu.classList.add('hidden');
+        });
+        
+        mobileMenu.addEventListener('click', (e) => {
+            if (e.target === mobileMenu) {
+                mobileMenu.classList.add('hidden');
+            }
+        });
+        
+        function updateSidebarStats() {
+            fetch('/api/dashboard/stats')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('onlineCount').textContent = data.data.active_devices;
+                        document.getElementById('totalCount').textContent = data.data.total_devices;
+                        document.getElementById('alertsCount').textContent = data.data.active_alerts;
+                        document.getElementById('alertCount').textContent = data.data.active_alerts;
+                        document.getElementById('newTodayCount').textContent = data.data.new_today;
+                        
+                        document.getElementById('mobileOnlineCount').textContent = data.data.active_devices;
+                        document.getElementById('mobileTotalCount').textContent = data.data.total_devices;
+                        document.getElementById('mobileAlertsCount').textContent = data.data.active_alerts;
+                        document.getElementById('mobileAlertCount').textContent = data.data.active_alerts;
+                        document.getElementById('mobileNewTodayCount').textContent = data.data.new_today;
+                    }
+                });
+        }
+
+        document.getElementById('scanNowBtn').addEventListener('click', function() {
+            this.disabled = true;
+            this.textContent = 'Scanning...';
+            
+            fetch('/api/scan/now', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    this.disabled = false;
+                    this.textContent = 'Scan';
+                    document.getElementById('lastScanTime').textContent = 'Just now';
+                    updateSidebarStats();
+                    if (window.updatePageData) window.updatePageData();
+                });
+        });
+
+        updateSidebarStats();
+        setInterval(updateSidebarStats, 5000);
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

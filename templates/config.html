@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration{% endblock %}
+
+{% block content %}
+<div class="cyber-card rounded-lg p-4">
+    <h2 class="text-lg font-medium mb-4">System Configuration</h2>
+    
+    <div class="space-y-6">
+        <div>
+            <h3 class="text-sm font-medium text-slate-300 mb-3">Scanning Settings</h3>
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-slate-400">Scan Interval (seconds)</span>
+                    <input type="number" id="scanInterval" class="bg-slate-800 border border-slate-700 rounded px-3 py-1 w-24 text-sm">
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-slate-400">Continuous Scanning</span>
+                    <button id="scanToggle" class="px-4 py-1 bg-emerald-600 hover:bg-emerald-700 rounded text-sm">Loading...</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="border-t border-slate-700 pt-6">
+            <h3 class="text-sm font-medium text-slate-300 mb-3">Alert Preferences</h3>
+            <div class="space-y-3">
+                <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="newDeviceAlert" class="rounded">
+                    <span class="text-sm text-slate-400">Enable new device alerts</span>
+                </label>
+                <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="reconnectAlert" class="rounded">
+                    <span class="text-sm text-slate-400">Enable reconnection alerts</span>
+                </label>
+                <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="suspiciousMacAlert" class="rounded">
+                    <span class="text-sm text-slate-400">Enable suspicious MAC alerts</span>
+                </label>
+                <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="trafficMonitoring" class="rounded">
+                    <span class="text-sm text-slate-400">Enable traffic monitoring</span>
+                </label>
+                <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="advancedLogging" class="rounded">
+                    <span class="text-sm text-slate-400">Enable advanced logging</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="border-t border-slate-700 pt-6">
+            <h3 class="text-sm font-medium text-slate-300 mb-3">System Information</h3>
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-slate-400">Version</span>
+                    <span class="px-3 py-1 bg-blue-500/20 text-blue-400 rounded text-sm">v2.0</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-slate-400">License Type</span>
+                    <span id="licenseType" class="px-3 py-1 bg-emerald-500/20 text-emerald-400 rounded text-sm">Loading...</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-slate-400">All Features</span>
+                    <span class="px-3 py-1 bg-emerald-500/20 text-emerald-400 rounded text-sm">Unlocked</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-slate-400">Timezone</span>
+                    <span id="timezoneInfo" class="px-3 py-1 bg-violet-500/20 text-violet-400 rounded text-sm">Loading...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="border-t border-slate-700 pt-6">
+            <h3 class="text-sm font-medium text-slate-300 mb-3">Network Settings</h3>
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-slate-400">Auto-detect network range</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" checked class="sr-only peer">
+                        <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-slate-400">Deep packet inspection</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="deepInspection" class="sr-only peer">
+                        <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="border-t border-slate-700 pt-6">
+            <button id="saveConfigBtn" onclick="saveConfiguration()" class="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 rounded flex items-center gap-2">
+                <i data-feather="save" class="w-4 h-4"></i>
+                Save Configuration
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const scanToggle = document.getElementById('scanToggle');
+    const scanInterval = document.getElementById('scanInterval');
+    const licenseType = document.getElementById('licenseType');
+    const timezoneInfo = document.getElementById('timezoneInfo');
+    const newDeviceAlert = document.getElementById('newDeviceAlert');
+    const reconnectAlert = document.getElementById('reconnectAlert');
+    const suspiciousMacAlert = document.getElementById('suspiciousMacAlert');
+    const trafficMonitoring = document.getElementById('trafficMonitoring');
+    const advancedLogging = document.getElementById('advancedLogging');
+    const deepInspection = document.getElementById('deepInspection');
+    
+    let isScanning = false;
+
+    function loadConfiguration() {
+        fetch('/api/config')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const config = data.data;
+                    
+                    scanInterval.value = config.scan_interval;
+                    isScanning = config.scanning_active;
+                    
+                    scanToggle.textContent = isScanning ? 'Stop Scanning' : 'Start Scanning';
+                    scanToggle.className = isScanning ? 
+                        'px-4 py-1 bg-red-600 hover:bg-red-700 rounded text-sm' :
+                        'px-4 py-1 bg-emerald-600 hover:bg-emerald-700 rounded text-sm';
+                    
+                    licenseType.textContent = config.license_type;
+                    
+                    newDeviceAlert.checked = config.rules.new_device_alert;
+                    reconnectAlert.checked = config.rules.reconnect_alert;
+                    suspiciousMacAlert.checked = config.rules.suspicious_mac_alert;
+                    trafficMonitoring.checked = config.rules.traffic_monitoring;
+                    advancedLogging.checked = config.rules.advanced_logging;
+                    deepInspection.checked = config.traffic_monitoring;
+                }
+            });
+        
+        // Load timezone
+        fetch('/api/timezone/info')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    timezoneInfo.textContent = `${data.timezone} (${data.offset})`;
+                }
+            });
+    }
+
+    function saveConfiguration() {
+        const config = {
+            scan_interval: parseInt(document.getElementById('scanInterval').value),
+            rules: {
+                new_device_alert: newDeviceAlert.checked,
+                reconnect_alert: reconnectAlert.checked,
+                suspicious_mac_alert: suspiciousMacAlert.checked,
+                traffic_monitoring: trafficMonitoring.checked,
+                advanced_logging: advancedLogging.checked
+            }
+        };
+        
+        fetch('/api/config/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('✓ Configuration saved! Scan interval: ' + data.scan_interval + 's', 'success');
+                loadConfiguration(); // Reload to show saved values
+            } else {
+                showNotification('Error saving configuration: ' + data.error, 'error');
+            }
+        });
+    }
+
+    function showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `fixed top-4 right-4 px-4 py-3 rounded shadow-lg ${
+            type === 'success' ? 'bg-emerald-500' : 'bg-red-500'
+        } text-white z-50`;
+        notification.textContent = message;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => notification.remove(), 3000);
+    }
+
+    function updateScanStatus() {
+        fetch('/api/scan/status')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    isScanning = data.scanning;
+                    scanToggle.textContent = isScanning ? 'Stop Scanning' : 'Start Scanning';
+                    scanToggle.className = isScanning ? 
+                        'px-4 py-1 bg-red-600 hover:bg-red-700 rounded text-sm' :
+                        'px-4 py-1 bg-emerald-600 hover:bg-emerald-700 rounded text-sm';
+                }
+            });
+    }
+
+    scanToggle.addEventListener('click', function() {
+        const endpoint = isScanning ? '/api/scan/stop' : '/api/scan/start';
+        fetch(endpoint, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    updateScanStatus();
+                }
+            });
+    });
+
+    loadConfiguration();
+    setInterval(updateScanStatus, 5000);
+</script>
+{% endblock %}
