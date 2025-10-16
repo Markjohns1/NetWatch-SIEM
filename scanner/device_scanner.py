@@ -12,10 +12,47 @@ import hashlib
 import os
 import concurrent.futures
 
+class TerminalDisplay:
+    """Handles formatted terminal output with clean sections"""
+    
+    @staticmethod
+    def print_header(title):
+        print(f"\n{'=' * 80}")
+        print(f" {title.upper()}")
+        print(f"{'=' * 80}")
+    
+    @staticmethod
+    def print_section(title):
+        print(f"\n{'-' * 60}")
+        print(f" {title}")
+        print(f"{'-' * 60}")
+    
+    @staticmethod
+    def print_info(label, value, indent=0):
+        indent_str = " " * indent
+        print(f"{indent_str}> {label}: {value}")
+    
+    @staticmethod
+    def print_success(message):
+        print(f" [SUCCESS] {message}")
+    
+    @staticmethod
+    def print_warning(message):
+        print(f" [WARNING] {message}")
+    
+    @staticmethod
+    def print_error(message):
+        print(f" [ERROR] {message}")
+    
+    @staticmethod
+    def print_device(device, index, total):
+        print(f" [{index:2d}/{total:2d}] IP: {device['ip']:15} | MAC: {device.get('mac', 'Unknown'):17} | Vendor: {device.get('vendor', 'Unknown')}")
+
 class DynamicNetworkDetector:
     def __init__(self):
         self.previous_network = None
         self.network_cache = {}
+        self.display = TerminalDisplay()
     
     def auto_detect_network(self):
         current_network = self._get_current_network_context()
@@ -36,6 +73,8 @@ class DynamicNetworkDetector:
         return hashlib.md5(network_id.encode()).hexdigest()
     
     def _discover_network_properties(self):
+        self.display.print_header("Network Auto-Detection")
+        
         network_info = {
             'interface': self._get_active_interface(),
             'ip_address': self._get_my_ip(),
@@ -48,80 +87,69 @@ class DynamicNetworkDetector:
             'discovery_time': datetime.now()
         }
         
-        print(f"Auto-detected network: {network_info['network_range']} ({network_info['network_type']})")
-        print(f"Using interface: {network_info['interface']}")
-        print(f"Gateway: {network_info['gateway']}")
-        print(f"Your IP: {network_info['ip_address']}")
-        print(f"Optimal methods: {', '.join(network_info['optimal_scan_methods'])}")
+        self.display.print_section("Network Configuration")
+        self.display.print_info("Network Range", network_info['network_range'])
+        self.display.print_info("Network Type", network_info['network_type'])
+        self.display.print_info("Interface", network_info['interface'])
+        self.display.print_info("Your IP", network_info['ip_address'])
+        self.display.print_info("Gateway", network_info['gateway'])
+        self.display.print_info("Estimated Size", f"{network_info['estimated_size']} devices")
+        self.display.print_info("Scan Methods", ", ".join(network_info['optimal_scan_methods']))
         
         return network_info
 
     def _get_active_interface(self):
-        """Get the best network interface, avoiding virtual adapters"""
         try:
             interfaces = psutil.net_if_stats()
             valid_interfaces = []
             
-            # First pass: collect all valid interfaces with their priorities
             for iface, stats in interfaces.items():
                 if not stats.isup:
                     continue
                     
                 iface_lower = iface.lower()
                 
-                # Skip virtual/loopback interfaces
                 if iface_lower.startswith(('lo', 'docker', 'veth', 'br-')):
                     continue
                 if any(bad in iface_lower for bad in ['vmware', 'vmnet', 'virtual', 'vbox', 'hyper-v', 'virtualbox']):
                     continue
                 
-                # Get addresses for this interface
                 addrs = psutil.net_if_addrs().get(iface, [])
                 for addr in addrs:
                     if addr.family == socket.AF_INET:
                         ip = addr.address
                         
-                        # Skip loopback IPs
                         if ip.startswith('127.'):
                             continue
                         
-                        # Calculate priority (lower is better)
                         priority = self._calculate_interface_priority(iface_lower, ip)
                         valid_interfaces.append((iface, ip, priority))
                         break
             
             if not valid_interfaces:
-                print("WARNING: No valid network interface found")
+                self.display.print_warning("No valid network interface found")
                 return "unknown"
             
-            # Sort by priority (lowest first)
             valid_interfaces.sort(key=lambda x: x[2])
-            
             best_iface = valid_interfaces[0][0]
-            best_ip = valid_interfaces[0][1]
-            
-            print(f"⁘ Selected interface: {best_iface} ({best_ip})")
             return best_iface
             
         except Exception as e:
-            print(f"Interface detection error: {e}")
+            self.display.print_error(f"Interface detection error: {e}")
             return "unknown"
-    
+
     def _calculate_interface_priority(self, iface_lower, ip):
-        """Calculate interface priority (lower = better)"""
         priority = 100
         
-        # Prefer real network ranges over APIPA
         if ip.startswith('169.254.'):
-            priority += 1000  # Very low priority for APIPA
+            priority += 1000
         elif ip.startswith('192.168.'):
-            priority -= 50  # High priority for home networks
+            priority -= 50
         elif ip.startswith('10.'):
-            priority -= 40  # High priority for corporate
+            priority -= 40
         elif ip.startswith('172.'):
-            priority -= 30  # Medium-high priority
+            priority -= 30
         
-        # Prefer ethernet/wifi interfaces
         if any(term in iface_lower for term in ['ethernet', 'eth']):
             priority -= 20
         if any(term in iface_lower for term in ['wi-fi', 'wlan', 'wireless', 'wifi']):
@@ -130,22 +158,18 @@ class DynamicNetworkDetector:
         return priority
 
     def _get_my_ip(self):
-        """Get the computer's primary IP address"""
         try:
-            # Method 1: Try to connect to external server
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
             ip = s.getsockname()[0]
             s.close()
             
-            # Don't accept APIPA addresses from this method
             if not ip.startswith('169.254.'):
                 return ip
         except:
             pass
         
         try:
-            # Method 2: Get from best interface
             active_iface = self._get_active_interface()
             if active_iface != "unknown":
                 interfaces = psutil.net_if_addrs()
@@ -155,11 +179,9 @@ class DynamicNetworkDetector:
                             if addr.family == socket.AF_INET and not addr.address.startswith('127.'):
                                 return addr.address
             
-            # Method 3: Find any non-loopback, non-virtual IP
             for iface, addrs in psutil.net_if_addrs().items():
                 iface_lower = iface.lower()
                 
-                # Skip virtual interfaces
                 if any(bad in iface_lower for bad in ['lo', 'docker', 'veth', 'vmware', 'vbox', 'virtual']):
                     continue
                 
@@ -174,19 +196,17 @@ class DynamicNetworkDetector:
         return "127.0.0.1"
 
     def _calculate_subnet(self):
-        """Calculate the network subnet"""
         try:
             interfaces = psutil.net_if_addrs()
             active_iface = self._get_active_interface()
             
             if active_iface == "unknown":
-                return "192.168.1.0/24"  # Safe fallback
+                return "192.168.1.0/24"
             
             for iface, addrs in interfaces.items():
                 if iface == active_iface:
                     for addr in addrs:
                         if addr.family == socket.AF_INET:
-                            # Skip APIPA addresses
                             if addr.address.startswith('169.254.'):
                                 continue
                             
@@ -194,10 +214,8 @@ class DynamicNetworkDetector:
                                 ip = ipaddress.IPv4Interface(f"{addr.address}/{addr.netmask}")
                                 network = str(ip.network)
                                 
-                                # Validate the network isn't too large
                                 net_obj = ipaddress.IPv4Network(network)
-                                if net_obj.num_addresses > 1024:  # /22 or larger
-                                    # For large networks, scan a smaller subset
+                                if net_obj.num_addresses > 1024:
                                     base_ip = addr.address.rsplit('.', 1)[0]
                                     return f"{base_ip}.0/24"
                                 
@@ -205,7 +223,6 @@ class DynamicNetworkDetector:
                             except:
                                 continue
             
-            # Fallback: use IP-based guess
             my_ip = self._get_my_ip()
             if not my_ip.startswith(('127.', '169.254.')):
                 return f"{my_ip.rsplit('.', 1)[0]}.0/24"
@@ -213,26 +230,24 @@ class DynamicNetworkDetector:
             return "192.168.1.0/24"
             
         except Exception as e:
-            print(f"Subnet calculation error: {e}")
+            self.display.print_error(f"Subnet calculation error: {e}")
             return "192.168.1.0/24"
 
     def _get_network_range(self):
         return self._calculate_subnet()
 
     def _get_default_gateway(self):
-        """Get the default gateway IP"""
         try:
-            if os.name == 'nt':  # Windows
+            if os.name == 'nt':
                 result = subprocess.run(['ipconfig'], capture_output=True, text=True, shell=True)
                 for line in result.stdout.split('\n'):
                     if 'Default Gateway' in line and '.' in line:
                         parts = line.split(':')
                         if len(parts) > 1:
                             gateway = parts[1].strip()
-                            # Validate gateway
                             if gateway and gateway not in ['0.0.0.0', ''] and not gateway.startswith('169.254.'):
                                 return gateway
-            else:  # Linux/Mac versions
+            else:
                 result = subprocess.run(['ip', 'route'], capture_output=True, text=True)
                 for line in result.stdout.split('\n'):
                     if 'default' in line:
@@ -256,14 +271,14 @@ class DynamicNetworkDetector:
 
     def _get_wifi_ssid(self):
         try:
-            if os.name == 'nt':  # Windows
+            if os.name == 'nt':
                 result = subprocess.run(['netsh', 'wlan', 'show', 'interfaces'], capture_output=True, text=True, shell=True)
                 for line in result.stdout.split('\n'):
                     if 'SSID' in line and 'BSSID' not in line:
                         parts = line.split(':')
                         if len(parts) > 1:
                             return parts[1].strip()
-            else:  # Linux/Mac
+            else:
                 try:
                     result = subprocess.run(['iwgetid', '-r'], capture_output=True, text=True)
                     if result.stdout.strip():
@@ -278,38 +293,36 @@ class DynamicNetworkDetector:
         my_ip = self._get_my_ip()
         
         if my_ip.startswith('10.'):
-            return "corporate_large"
+            return "Corporate Network"
         elif my_ip.startswith('192.168.'):
-            return "home_small_business"
+            return "Home/Small Business"
         elif my_ip.startswith('172.'):
-            # Check if it's in private range (172.16-31.x.x)
             try:
                 octets = my_ip.split('.')
                 second = int(octets[1])
                 if 16 <= second <= 31:
-                    return "enterprise_medium"
+                    return "Enterprise Network"
             except:
                 pass
-            return "public_dhcp"
+            return "Public Network"
         elif my_ip.startswith('169.254.'):
-            return "link_local"
+            return "Link-Local (APIPA)"
         else:
-            return "public_dhcp"
+            return "Public Network"
 
     def _determine_best_scan_methods(self):
         network_type = self._determine_network_type()
         my_ip = self._get_my_ip()
         
-        # If APIPA/link-local, use limited scanning
         if my_ip.startswith('169.254.'):
-            return ['ping_sweep']  # Only ping sweep for APIPA
+            return ['ping_sweep']
         
         method_profiles = {
-            "home_small_business": ['arp_scan', 'ping_sweep'],
-            "corporate_large": ['ping_sweep', 'arp_scan'],
-            "enterprise_medium": ['arp_scan', 'ping_sweep'],
-            "public_dhcp": ['ping_sweep'],
-            "link_local": ['ping_sweep']
+            "Home/Small Business": ['arp_scan', 'ping_sweep'],
+            "Corporate Network": ['ping_sweep', 'arp_scan'],
+            "Enterprise Network": ['arp_scan', 'ping_sweep'],
+            "Public Network": ['ping_sweep'],
+            "Link-Local (APIPA)": ['ping_sweep']
         }
         
         return method_profiles.get(network_type, ['arp_scan', 'ping_sweep'])
@@ -317,14 +330,13 @@ class DynamicNetworkDetector:
     def _estimate_network_size(self):
         network_type = self._determine_network_type()
         size_estimates = {
-            "home_small_business": 50,
-            "corporate_large": 1000,
-            "enterprise_medium": 500,
-            "public_dhcp": 200,
-            "link_local": 10
+            "Home/Small Business": 50,
+            "Corporate Network": 1000,
+            "Enterprise Network": 500,
+            "Public Network": 200,
+            "Link-Local (APIPA)": 10
         }
         return size_estimates.get(network_type, 100)
-
 
 class DeviceScanner:
     def __init__(self, db):
@@ -333,35 +345,64 @@ class DeviceScanner:
         self.scan_thread = None
         self.mac_vendors = self._load_mac_vendors()
         self.network_detector = DynamicNetworkDetector()
+        self.display = TerminalDisplay()
 
     def smart_scan(self):
-        print("=" * 60)
-        print("⁜ NETWATCH SIEM STARTED NETWORK SCANNING")
-        print("=" * 60)
+        # Fantastic centered title
+        print("\n")
+        print("╔══════════════════════════════════════════════════════════════════════════════╗")
+        print("║                                                                              ║")
+        print("║                        NETWATCH SIEM - NETWORK SCANNER                       ║")
+        print("║                                                                              ║")
+        print("║                     >>> ACTIVE NETWORK DISCOVERY TOOL <<<                    ║")
+        print("║                                                                              ║")
+        print("║                           Created by: John O. Mark                           ║")
+        print("║                         Security Research Division                           ║")
+        print("║                                                                              ║")
+        print("╚══════════════════════════════════════════════════════════════════════════════╝")
+        print("")
         
         network_info = self.network_detector.auto_detect_network()
         
-        # Validate network before scanning
         if network_info['interface'] == 'unknown':
-            print("ERROR: No valid network interface detected!")
-            print("   Check your network connection and try again.")
+            self.display.print_error("No valid network interface detected!")
+            self.display.print_error("Check your network connection and try again.")
             return []
         
         if network_info['ip_address'].startswith('169.254.'):
-            print("⁘ WARNING: Using APIPA address (169.254.x.x)")
-            print("⁘ This means your computer couldn't get an IP from the router.")
-            print("⁘ Scan results may be limited. Check your network connection!")
+            self.display.print_warning("Using APIPA address (169.254.x.x)")
+            self.display.print_warning("This means your computer couldn't get an IP from the router.")
+            self.display.print_warning("Scan results may be limited. Check your network connection!")
         
         devices = self._adaptive_scan(network_info)
         enriched_devices = self._add_network_context(devices, network_info)
         
-        print(f"\n⁘ Scan complete. Found {len(enriched_devices)} devices on {network_info['network_range']}")
-        print("=" * 60)
+        self.display.print_section("Scan Results Summary")
+        self.display.print_success(f"Scan complete. Found {len(enriched_devices)} devices on {network_info['network_range']}")
+        
+        if enriched_devices:
+            self.display.print_section("Discovered Devices")
+            for i, device in enumerate(enriched_devices, 1):
+                self.display.print_device(device, i, len(enriched_devices))
+        
+        # Fantastic completion banner
+        print("\n")
+        print("╔══════════════════════════════════════════════════════════════════════════════╗")
+        print("║                                                                              ║")
+        print("║                         SCAN COMPLETE - MISSION SUCCESS                      ║")
+        print("║                                                                              ║")
+        print("║                     Network reconnaissance finished successfully             ║")
+        print("║                                                                              ║")
+        print("╚══════════════════════════════════════════════════════════════════════════════╝")
+        print("")
+        
         return enriched_devices
 
     def _adaptive_scan(self, network_info):
-        """Run scan methods with proper timeout and error handling"""
         all_devices = []
+        
+        self.display.print_section("Starting Network Scan")
+        self.display.print_info("Methods", ", ".join(network_info['optimal_scan_methods']))
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             future_to_method = {}
@@ -376,22 +417,21 @@ class DeviceScanner:
                     
                 future_to_method[future] = method_name
 
-            # Collect results
             for future in concurrent.futures.as_completed(future_to_method, timeout=20):
                 method_name = future_to_method[future]
                 try:
                     devices = future.result(timeout=2)
                     if devices:
-                        print(f"⁘ {method_name}: found {len(devices)} devices")
+                        self.display.print_success(f"{method_name}: found {len(devices)} devices")
                         for device in devices:
                             if not any(d['ip'] == device['ip'] for d in all_devices):
                                 all_devices.append(device)
                     else:
-                        print(f"• {method_name}: no devices found")
+                        self.display.print_info(f"{method_name}", "no devices found")
                 except concurrent.futures.TimeoutError:
-                    print(f"{method_name}: timed out")
+                    self.display.print_warning(f"{method_name}: timed out")
                 except Exception as e:
-                    print(f"{method_name}: {str(e)[:50]}")
+                    self.display.print_error(f"{method_name}: {str(e)[:50]}")
         
         return all_devices
 
@@ -399,7 +439,6 @@ class DeviceScanner:
         return self.smart_scan()
 
     def _load_mac_vendors(self):
-        #MAC vendor database 
         return {
             '00:50:56': 'VMware',
             '00:0C:29': 'VMware',
@@ -535,7 +574,7 @@ class DeviceScanner:
             '4C:7C:5F': 'Apple',
             '4C:8D:79': 'Apple',
             '50:32:37': 'Apple',
-            '50:A6:7F': 'Apple',
+            '50:A6:67': 'Apple',
             '50:EA:D6': 'Apple',
             '54:26:96': 'Apple',
             '54:4E:90': 'Apple',
@@ -741,7 +780,7 @@ class DeviceScanner:
             'CC:29:F5': 'Apple',
             'CC:2D:21': 'Apple',
             'CC:2D:8C': 'Apple',
-            'CC:4463': 'Apple',
+            'CC:44:63': 'Apple',
             'CC:78:5F': 'Apple',
             'CC:C7:60': 'Apple',
             'D0:03:4B': 'Apple',
@@ -772,7 +811,7 @@ class DeviceScanner:
             'DC:2B:2A': 'Apple',
             'DC:2B:61': 'Apple',
             'DC:37:85': 'Apple',
-            'DC:3714': 'Apple',
+            'DC:37:14': 'Apple',
             'DC:41:E2': 'Apple',
             'DC:56:E7': 'Apple',
             'DC:86:D8': 'Apple',
@@ -990,14 +1029,12 @@ class DeviceScanner:
 
     def arp_scan(self, target_ip):
         try:
-            print(f"⁘ ARP scanning {target_ip}...")
+            self.display.print_info("ARP Scan", f"scanning {target_ip}...")
             
-            # Validate network size
             try:
                 network = ipaddress.IPv4Network(target_ip)
                 if network.num_addresses > 1024:
-                    print(f"Network too large ({network.num_addresses} hosts), limiting scope")
-                    # Scan only a subset
+                    self.display.print_warning(f"Network too large ({network.num_addresses} hosts), limiting scope")
                     base = str(network.network_address).rsplit('.', 1)[0]
                     target_ip = f"{base}.0/24"
             except:
@@ -1025,20 +1062,19 @@ class DeviceScanner:
             return devices
 
         except PermissionError:
-            print("   ARP scan requires administrator/root privileges")
+            self.display.print_error("ARP scan requires administrator/root privileges")
             return []
         except Exception as e:
-            print(f"   ARP scan error: {str(e)[:50]}")
+            self.display.print_error(f"ARP scan error: {str(e)[:50]}")
             return []
 
     def ping_sweep(self, network_info):
-        print(f"⁘ Ping sweeping {network_info['network_range']}...")
+        self.display.print_info("Ping Sweep", f"scanning {network_info['network_range']}...")
         devices = []
         
         try:
             network = ipaddress.ip_network(network_info['network_range'])
             
-            # Limit scan size
             max_hosts = min(30, network.num_addresses - 2)
             targets = [str(ip) for ip in list(network.hosts())[:max_hosts]]
             
@@ -1051,7 +1087,7 @@ class DeviceScanner:
                         result = subprocess.run(['ping', '-c', '1', '-W', '1', ip], 
                                               capture_output=True, text=True, timeout=1)
                     
-                    if ("⁘ Reply from" in result.stdout or "1 received" in result.stdout or 
+                    if ("Reply from" in result.stdout or "1 received" in result.stdout or 
                         "bytes from" in result.stdout or "ttl=" in result.stdout.lower()):
                         devices.append({
                             'ip': ip,
@@ -1063,7 +1099,7 @@ class DeviceScanner:
                     continue
                     
         except Exception as e:
-            print(f"⁘ Ping sweep error: {str(e)[:50]}")
+            self.display.print_error(f"Ping sweep error: {str(e)[:50]}")
         
         return devices
 
@@ -1075,12 +1111,12 @@ class DeviceScanner:
             return None
 
     def _add_network_context(self, devices, network_info):
-        """Add context to devices and save to database"""
         saved_count = 0
+        
+        self.display.print_section("Saving Devices to Database")
         
         for device in devices:
             try:
-                # Add network context
                 device['network_context'] = {
                     'network_type': network_info['network_type'],
                     'subnet': network_info['network_range'],
@@ -1088,7 +1124,6 @@ class DeviceScanner:
                     'trust_level': self._calculate_trust_level(device, network_info),
                 }
                 
-                # Try to resolve hostname
                 try:
                     hostname = self.get_hostname(device['ip'])
                     if hostname:
@@ -1096,20 +1131,16 @@ class DeviceScanner:
                 except:
                     device['hostname'] = None
                 
-                # Validate device has required data
                 if not device.get('ip') or device['ip'] == 'Unknown':
-                    print(f" Skipping device: No valid IP")
+                    self.display.print_warning(f"Skipping device: No valid IP")
                     continue
                 
-                # Use IP as MAC if MAC is unknown (for ping sweep results)
                 mac = device.get('mac')
                 if not mac or mac == 'Unknown':
-                    # Generate a temporary MAC based on IP for tracking
                     mac = f"00:00:00:{device['ip'].split('.')[-3]:02x}:{device['ip'].split('.')[-2]:02x}:{device['ip'].split('.')[-1]:02x}".upper()
                     device['mac'] = mac
-                    print(f"⁘ Generated temporary MAC for {device['ip']}: {mac}")
+                    self.display.print_info(f"Generated MAC for {device['ip']}", mac)
                 
-                # Save to database
                 try:
                     device_id = self.db.add_device(
                         ip=device['ip'],
@@ -1122,31 +1153,30 @@ class DeviceScanner:
                         saved_count += 1
                         device['device_id'] = device_id
                         
-                        # Log the event
                         self.db.add_event(
                             event_type='device_scan',
                             severity='info',
-                            description=f"⁘ Device detected: {device['ip']} ({mac}) via {device.get('discovery_method', 'unknown')}",
+                            description=f"Device detected: {device['ip']} ({mac}) via {device.get('discovery_method', 'unknown')}",
                             device_id=device_id
                         )
-                        print(f"⁘ Saved: {device['ip']} (ID: {device_id})")
+                        self.display.print_success(f"Saved: {device['ip']} (ID: {device_id})")
                     else:
-                        print(f"⁘ Failed to save: {device['ip']}")
+                        self.display.print_warning(f"Failed to save: {device['ip']}")
                         
                 except Exception as db_error:
-                    print(f"⁘ DB Error for {device['ip']}: {db_error}")
+                    self.display.print_error(f"DB Error for {device['ip']}: {db_error}")
                     
             except Exception as e:
-                print(f"⁘ Error processing device: {e}")
+                self.display.print_error(f"Error processing device: {e}")
                 continue
         
-        print(f"\n⁘ Saved {saved_count}/{len(devices)} devices to database")
+        self.display.print_info("Database Save", f"Saved {saved_count}/{len(devices)} devices")
         return devices
 
     def _infer_location(self, network_info):
-        if network_info['network_type'] == 'home_small_business':
+        if network_info['network_type'] == 'Home/Small Business':
             return "home_office"
-        elif network_info['network_type'] == 'corporate_large':
+        elif network_info['network_type'] == 'Corporate Network':
             return "enterprise"
         else:
             return "unknown"
@@ -1165,12 +1195,15 @@ class DeviceScanner:
         def scan_loop():
             while self.scanning:
                 self.smart_scan()
+                self.display.print_info("Continuous Scan", f"Next scan in {interval} seconds...")
                 time.sleep(interval)
         
         self.scan_thread = threading.Thread(target=scan_loop, daemon=True)
         self.scan_thread.start()
+        self.display.print_success(f"Continuous scanning started (interval: {interval}s)")
 
     def stop_scan(self):
         self.scanning = False
         if self.scan_thread:
             self.scan_thread.join(timeout=5)
+        self.display.print_success("Continuous scanning stopped")

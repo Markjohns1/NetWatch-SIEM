@@ -46,15 +46,15 @@
         transform: scale(1);
     }
     25% {
-        color: rgba(0, 240, 10, 1.0); 
+        color: rgba(0, 255, 10, 1.0); 
         transform: scale(1.1);
     }
     50% {
-        color: rgba(0, 100, 255, 1.0);        
+        color: rgba(0, 100, 255, 0.5);        
         transform: scale(1.05);
     }
     75% {
-        color: rgba(255, 0, 0, 1.0); 
+        color: rgba(255, 30, 0, 1.0); 
         transform: scale(1);
     }
 }
@@ -62,7 +62,7 @@
 /* Alternative: Smooth color transition version */
 .active_scanning_smooth {
     font-size: 30px;
-    animation: smoothScanning 3s infinite;
+    animation: smoothScanning 1.3s infinite;
 }
 
 @keyframes smoothScanning {
