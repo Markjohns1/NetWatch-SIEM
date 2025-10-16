@@ -32,6 +32,87 @@
     border-left: 4px solid var(--warning);
 }
 
+/* Active scanning animation with multiple colors */
+.active_scanning {
+
+    font-size: 20px;
+    animation: activeScanning 1.5s infinite alternate;
+    text-shadow: 0 0 8px currentColor;
+}
+
+@keyframes activeScanning {
+    0% {
+        color: rgba(255, 0, 0, 1.0); 
+        transform: scale(1);
+    }
+    25% {
+        color: rgba(0, 240, 10, 1.0); 
+        transform: scale(1.1);
+    }
+    50% {
+        color: rgba(0, 100, 255, 1.0);        
+        transform: scale(1.05);
+    }
+    75% {
+        color: rgba(255, 0, 0, 1.0); 
+        transform: scale(1);
+    }
+}
+
+/* Alternative: Smooth color transition version */
+.active_scanning_smooth {
+    font-size: 30px;
+    animation: smoothScanning 3s infinite;
+}
+
+@keyframes smoothScanning {
+    0% {
+        color: rgba(255, 0, 0, 1.0); /* Red */
+        text-shadow: 0 0 15px rgba(255, 0, 0, 0.7);
+    }
+    50% {
+        color: rgba(0, 240, 10, 1.0); /* Green */
+        text-shadow: 0 0 15px rgba(0, 240, 10, 0.7);
+    }
+    100% {
+        color: rgba(0, 100, 255, 1.0); /* Blue */
+        text-shadow: 0 0 15px rgba(0, 100, 255, 0.7);
+    }
+}
+
+/* Pulsing dot style showing active scanning */
+.active_scanning {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    animation: dotPulse 2s infinite;
+}
+
+@keyframes dotPulse {
+    0% {
+        background-color: #ff0000;
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7);
+    }
+    33% {
+        background-color: #00f00a;
+        transform: scale(1.2);
+        box-shadow: 0 0 0 10px rgba(0, 240, 10, 0);
+    }
+    66% {
+        background-color: #0064ff;
+        transform: scale(1.1);
+        box-shadow: 0 0 0 0 rgba(0, 100, 255, 0.7);
+    }
+    100% {
+        background-color: #ff0000;
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
+    }
+}
+
+
 .alert-critical {
     animation: pulse 2s infinite;
 }

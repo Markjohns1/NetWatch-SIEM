@@ -336,26 +336,26 @@ class DeviceScanner:
 
     def smart_scan(self):
         print("=" * 60)
-        print("🔍 NETWORK SCAN STARTED")
+        print("NETWORK SCAN STARTED")
         print("=" * 60)
         
         network_info = self.network_detector.auto_detect_network()
         
         # Validate network before scanning
         if network_info['interface'] == 'unknown':
-            print("❌ ERROR: No valid network interface detected!")
+            print("ERROR: No valid network interface detected!")
             print("   Check your network connection and try again.")
             return []
         
         if network_info['ip_address'].startswith('169.254.'):
-            print("⚠️  WARNING: Using APIPA address (169.254.x.x)")
+            print("WARNING: Using APIPA address (169.254.x.x)")
             print("   This means your computer couldn't get an IP from the router.")
             print("   Scan results may be limited. Check your network connection!")
         
         devices = self._adaptive_scan(network_info)
         enriched_devices = self._add_network_context(devices, network_info)
         
-        print(f"\n✓ Scan complete. Found {len(enriched_devices)} devices on {network_info['network_range']}")
+        print(f"\nScan complete. Found {len(enriched_devices)} devices on {network_info['network_range']}")
         print("=" * 60)
         return enriched_devices
 
@@ -382,16 +382,16 @@ class DeviceScanner:
                 try:
                     devices = future.result(timeout=2)
                     if devices:
-                        print(f"✓ {method_name}: found {len(devices)} devices")
+                        print(f"{method_name}: found {len(devices)} devices")
                         for device in devices:
                             if not any(d['ip'] == device['ip'] for d in all_devices):
                                 all_devices.append(device)
                     else:
                         print(f"• {method_name}: no devices found")
                 except concurrent.futures.TimeoutError:
-                    print(f"✗ {method_name}: timed out")
+                    print(f"{method_name}: timed out")
                 except Exception as e:
-                    print(f"✗ {method_name}: {str(e)[:50]}")
+                    print(f"{method_name}: {str(e)[:50]}")
         
         return all_devices
 
@@ -990,13 +990,13 @@ class DeviceScanner:
 
     def arp_scan(self, target_ip):
         try:
-            print(f"  → ARP scanning {target_ip}...")
+            print(f"   ARP scanning {target_ip}...")
             
             # Validate network size
             try:
                 network = ipaddress.IPv4Network(target_ip)
                 if network.num_addresses > 1024:
-                    print(f"  ⚠️  Network too large ({network.num_addresses} hosts), limiting scope")
+                    print(f"Network too large ({network.num_addresses} hosts), limiting scope")
                     # Scan only a subset
                     base = str(network.network_address).rsplit('.', 1)[0]
                     target_ip = f"{base}.0/24"
@@ -1025,14 +1025,14 @@ class DeviceScanner:
             return devices
 
         except PermissionError:
-            print("  ✗ ARP scan requires administrator/root privileges")
+            print("   ARP scan requires administrator/root privileges")
             return []
         except Exception as e:
-            print(f"  ✗ ARP scan error: {str(e)[:50]}")
+            print(f"   ARP scan error: {str(e)[:50]}")
             return []
 
     def ping_sweep(self, network_info):
-        print(f"  → Ping sweeping {network_info['network_range']}...")
+        print(f"   Ping sweeping {network_info['network_range']}...")
         devices = []
         
         try:
@@ -1063,7 +1063,7 @@ class DeviceScanner:
                     continue
                     
         except Exception as e:
-            print(f"  ✗ Ping sweep error: {str(e)[:50]}")
+            print(f"   Ping sweep error: {str(e)[:50]}")
         
         return devices
 
@@ -1098,7 +1098,7 @@ class DeviceScanner:
                 
                 # Validate device has required data
                 if not device.get('ip') or device['ip'] == 'Unknown':
-                    print(f"  ⚠️  Skipping device: No valid IP")
+                    print(f" Skipping device: No valid IP")
                     continue
                 
                 # Use IP as MAC if MAC is unknown (for ping sweep results)
@@ -1107,7 +1107,7 @@ class DeviceScanner:
                     # Generate a temporary MAC based on IP for tracking
                     mac = f"00:00:00:{device['ip'].split('.')[-3]:02x}:{device['ip'].split('.')[-2]:02x}:{device['ip'].split('.')[-1]:02x}".upper()
                     device['mac'] = mac
-                    print(f"  → Generated temp MAC for {device['ip']}: {mac}")
+                    print(f"Generated temp MAC for {device['ip']}: {mac}")
                 
                 # Save to database
                 try:
@@ -1129,18 +1129,18 @@ class DeviceScanner:
                             description=f"Device detected: {device['ip']} ({mac}) via {device.get('discovery_method', 'unknown')}",
                             device_id=device_id
                         )
-                        print(f"  ✓ Saved: {device['ip']} (ID: {device_id})")
+                        print(f"Saved: {device['ip']} (ID: {device_id})")
                     else:
-                        print(f"  ✗ Failed to save: {device['ip']}")
+                        print(f" Failed to save: {device['ip']}")
                         
                 except Exception as db_error:
-                    print(f"  ✗ DB Error for {device['ip']}: {db_error}")
+                    print(f"   DB Error for {device['ip']}: {db_error}")
                     
             except Exception as e:
-                print(f"  ✗ Error processing device: {e}")
+                print(f"   Error processing device: {e}")
                 continue
         
-        print(f"\n  💾 Saved {saved_count}/{len(devices)} devices to database")
+        print(f"\nSaved {saved_count}/{len(devices)} devices to database")
         return devices
 
     def _infer_location(self, network_info):
