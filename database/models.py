@@ -324,29 +324,28 @@ class Database:
         conn.close()
         return devices
 
-
-def search_devices(self, query):
-    """
-    Search devices by IP, MAC, device name, hostname, or vendor
-    """
-    conn = self.get_connection()
-    cursor = conn.cursor()
-    
-    search_term = f"%{query}%"
-    
-    cursor.execute('''
-        SELECT * FROM devices 
-        WHERE ip_address LIKE ? 
-           OR mac_address LIKE ? 
-           OR device_name LIKE ? 
-           OR hostname LIKE ? 
-           OR vendor LIKE ?
-        ORDER BY last_seen DESC
-    ''', (search_term, search_term, search_term, search_term, search_term))
-    
-    devices = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-    return devices
+    def search_devices(self, query):
+        """
+        Search devices by IP, MAC, device name, hostname, or vendor
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        search_term = f"%{query}%"
+        
+        cursor.execute('''
+            SELECT * FROM devices 
+            WHERE ip_address LIKE ? 
+               OR mac_address LIKE ? 
+               OR device_name LIKE ? 
+               OR hostname LIKE ? 
+               OR vendor LIKE ?
+            ORDER BY last_seen DESC
+        ''', (search_term, search_term, search_term, search_term, search_term))
+        
+        devices = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return devices
     
     def get_active_devices(self):
         conn = self.get_connection()
