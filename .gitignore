@@ -1,19 +1,30 @@
-# Ignore virtual environments
+#Ignore virtual environments
 venv/
 .venv/
 
-# Ignore Python cache
+#Ignore Python cache and compiled files
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# Ignore environment variables
+#Ignore environment variables
 .env
 
-# Ignore OS junk
-.DS_Store
-Thumbs.db
-
-# Ignore logs or compiled files
+#Ignore local databases and logs
 *.log
 *.sqlite3
 *.db
+
+.DS_Store
+Thumbs.db
+
+
+.replit
+.local/
+.idea/
+.vscode/
+
+dist/
+build/
+*.egg-info/

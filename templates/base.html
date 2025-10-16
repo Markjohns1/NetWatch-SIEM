@@ -13,27 +13,58 @@
 </head>
 <body class="min-h-screen bg-darker">
     <header class="bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-700">
-        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
-            <div class="flex items-center space-x-2">
-                <button id="menuToggle" class="lg:hidden text-slate-300 hover:text-white mr-3">
-                    <i data-feather="menu" class="w-6 h-6"></i>
-                </button>
-                <i data-feather="shield" class="text-blue-500"></i>
-                <h1 class="text-lg md:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-emerald-400">
-                    NetWatch SIEM
-                </h1>
-            </div>
-            <div class="flex items-center space-x-2 md:space-x-4">
-                <div class="hidden md:block text-sm">
-                    <span class="text-slate-400">Last scan:</span>
-                    <span class="font-mono text-emerald-400" id="lastScanTime">Live scanning...</span>
+        <div class="container mx-auto px-4 py-3">
+            <div class="flex justify-between items-center gap-4">
+                <div class="flex items-center space-x-2">
+                    <button id="menuToggle" class="lg:hidden text-slate-300 hover:text-white mr-3">
+                        <i data-feather="menu" class="w-6 h-6"></i>
+                    </button>
+                    <i data-feather="shield" class="text-blue-500"></i>
+                    <h1 class="text-lg md:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-emerald-400">
+                        NetWatch SIEM
+                    </h1>
                 </div>
-                <button id="scanNowBtn" class="px-2 md:px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs md:text-sm">
-                   Run Scan
-                </button>
-                <a href="/logout" class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center hover:bg-slate-600">
-                    <i data-feather="log-out" class="w-4 h-4"></i>
-                </a>
+                
+                <!-- Global Search Bar -->
+                <div class="flex-1 max-w-md mx-4 relative hidden md:block">
+                    <div class="relative">
+                        <input 
+                            type="text" 
+                            id="globalSearchInput"
+                            placeholder="Search devices (IP, MAC, Name)..." 
+                            class="w-full px-4 py-2 pl-10 pr-10 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                            autocomplete="off"
+                        >
+                        
+                        <button 
+                            id="globalClearBtn" 
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 hidden"
+                            onclick="clearGlobalSearch()"
+                        >
+                            <i data-feather="x" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                    
+                    
+                    <div id="globalSearchResults" class="absolute top-full left-0 right-0 mt-2 bg-slate-800 border border-slate-700 rounded-lg shadow-xl max-h-96 overflow-y-auto z-50 hidden">
+                        <div class="p-4 text-center text-slate-400 text-sm">
+                            Start typing to search devices...
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-2 md:space-x-4">
+                    <div class="hidden lg:block text-sm">
+                        <span class="text-slate-400">Last scan:</span>
+                        <span class="font-mono text-emerald-400" id="lastScanTime">Live scanning...</span>
+                    </div>
+                    <button id="scanNowBtn" class="px-2 md:px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs md:text-sm">
+                       Run Scan
+                    </button>
+                    <a href="/logout" class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center hover:bg-slate-600">
+                        <i data-feather="log-out" class="w-4 h-4"></i>
+                    </a>
+                </div>
             </div>
         </div>
     </header>
@@ -46,6 +77,20 @@
                     <i data-feather="x" class="w-6 h-6"></i>
                 </button>
             </div>
+            
+            <!-- Mobile Search -->
+            <div class="mb-4">
+                <div class="relative">
+                    <input 
+                        type="text" 
+                        id="mobileSearchInput"
+                        placeholder="Search devices..." 
+                        class="w-full px-4 py-2 pl-10 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    >
+                    <i data-feather="search" class="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                </div>
+            </div>
+            
             <nav class="space-y-4">
                 <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
                     <i data-feather="activity"></i>
@@ -208,6 +253,136 @@
                     if (window.updatePageData) window.updatePageData();
                 });
         });
+
+        // Global Search Functionality
+        let globalSearchTimeout = null;
+        const globalSearchInput = document.getElementById('globalSearchInput');
+        const globalSearchResults = document.getElementById('globalSearchResults');
+        const globalClearBtn = document.getElementById('globalClearBtn');
+        const mobileSearchInput = document.getElementById('mobileSearchInput');
+
+        function performGlobalSearch(query) {
+            if (query.length < 2) {
+                globalSearchResults.classList.add('hidden');
+                return;
+            }
+
+            fetch(`/api/devices/search?q=${encodeURIComponent(query)}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.data.length > 0) {
+                        displaySearchResults(data.data);
+                    } else {
+                        displayNoResults(query);
+                    }
+                })
+                .catch(err => {
+                    console.error('Search error:', err);
+                    globalSearchResults.innerHTML = '<div class="p-4 text-center text-red-400 text-sm">Search error occurred</div>';
+                    globalSearchResults.classList.remove('hidden');
+                });
+        }
+
+        function displaySearchResults(devices) {
+            const html = devices.slice(0, 8).map(device => `
+                <a href="/devices" class="block px-4 py-3 hover:bg-slate-700 border-b border-slate-700 last:border-b-0">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <i data-feather="${device.status === 'online' ? 'wifi' : 'wifi-off'}" 
+                                   class="w-4 h-4 text-${device.status === 'online' ? 'emerald' : 'slate'}-400"></i>
+                                <span class="text-slate-200 font-medium">${device.device_name || device.hostname || 'Unknown Device'}</span>
+                            </div>
+                            <div class="text-xs text-slate-400">
+                                <span class="font-mono">${device.ip_address}</span>
+                                <span class="mx-2">•</span>
+                                <span class="font-mono">${device.mac_address}</span>
+                            </div>
+                            ${device.vendor ? `<div class="text-xs text-slate-500 mt-1">${device.vendor}</div>` : ''}
+                        </div>
+                        <div>
+                            <span class="status-badge ${device.status === 'online' ? 'status-online' : 'status-offline'} text-xs">
+                                ${device.status}
+                            </span>
+                        </div>
+                    </div>
+                </a>
+            `).join('');
+
+            const footer = devices.length > 8 ? `
+                <a href="/devices" class="block px-4 py-3 text-center text-sm text-blue-400 hover:bg-slate-700">
+                    View all ${devices.length} results →
+                </a>
+            ` : '';
+
+            globalSearchResults.innerHTML = html + footer;
+            globalSearchResults.classList.remove('hidden');
+            setTimeout(() => feather.replace(), 10);
+        }
+
+        function displayNoResults(query) {
+            globalSearchResults.innerHTML = `
+                <div class="p-4 text-center">
+                    <div class="text-slate-400 text-sm mb-2">No devices found matching</div>
+                    <div class="text-slate-300 font-mono text-sm">"${query}"</div>
+                    <a href="/devices" class="inline-block mt-3 text-xs text-blue-400 hover:text-blue-300">
+                        View all devices →
+                    </a>
+                </div>
+            `;
+            globalSearchResults.classList.remove('hidden');
+        }
+
+        function clearGlobalSearch() {
+            globalSearchInput.value = '';
+            globalClearBtn.classList.add('hidden');
+            globalSearchResults.classList.add('hidden');
+        }
+
+        if (globalSearchInput) {
+            globalSearchInput.addEventListener('input', (e) => {
+                const query = e.target.value.trim();
+                
+                if (query) {
+                    globalClearBtn.classList.remove('hidden');
+                } else {
+                    globalClearBtn.classList.add('hidden');
+                    globalSearchResults.classList.add('hidden');
+                    return;
+                }
+                
+                clearTimeout(globalSearchTimeout);
+                globalSearchTimeout = setTimeout(() => {
+                    performGlobalSearch(query);
+                }, 300);
+            });
+
+            globalSearchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    clearTimeout(globalSearchTimeout);
+                    performGlobalSearch(e.target.value.trim());
+                }
+            });
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!globalSearchInput.contains(e.target) && !globalSearchResults.contains(e.target)) {
+                    globalSearchResults.classList.add('hidden');
+                }
+            });
+        }
+
+        // Mobile search redirects to devices page
+        if (mobileSearchInput) {
+            mobileSearchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const query = e.target.value.trim();
+                    if (query) {
+                        window.location.href = `/devices?search=${encodeURIComponent(query)}`;
+                    }
+                }
+            });
+        }
 
         updateSidebarStats();
         setInterval(updateSidebarStats, 5000);

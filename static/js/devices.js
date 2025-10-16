@@ -1,7 +1,12 @@
 let selectedDevices = new Set();
+let searchTimeout = null;
 
-function updateDevicesList() {
-    fetch('/api/devices')
+function updateDevicesList(searchQuery = '') {
+    const url = searchQuery 
+        ? `/api/devices/search?q=${encodeURIComponent(searchQuery)}`
+        : '/api/devices';
+    
+    fetch(url)
         .then(res => res.json())
         .then(data => {
             const tbody = document.getElementById('devicesTableBody');
@@ -37,7 +42,7 @@ function updateDevicesList() {
                             </button>
                         </td>
                         <td class="py-3">
-                            <button onclick="editDeviceName(${device.id}, '${device.device_name || ''}')" 
+                            <button onclick="editDeviceName(${device.id}, '${(device.device_name || '').replace(/'/g, "\\'")}')" 
                                     class="text-blue-400 hover:text-blue-300">
                                 <i data-feather="edit-2" class="w-4 h-4"></i>
                             </button>
@@ -47,9 +52,53 @@ function updateDevicesList() {
                 feather.replace();
                 updateDeleteButton();
             } else {
-                tbody.innerHTML = '<tr><td colspan="8" class="py-4 text-center text-slate-400">No devices found</td></tr>';
+                const message = searchQuery 
+                    ? `No devices found matching "${searchQuery}"`
+                    : 'No devices found';
+                tbody.innerHTML = `<tr><td colspan="8" class="py-4 text-center text-slate-400">${message}</td></tr>`;
             }
         });
+}
+
+function setupSearch() {
+    const searchInput = document.getElementById('deviceSearchInput');
+    const clearBtn = document.getElementById('clearSearchBtn');
+    
+    if (!searchInput) return;
+    
+    searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.trim();
+        
+        // Show/hide clear button
+        if (query) {
+            clearBtn.classList.remove('hidden');
+        } else {
+            clearBtn.classList.add('hidden');
+        }
+        
+        // Debounce search (wait 300ms after user stops typing)
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            updateDevicesList(query);
+        }, 300);
+    });
+    
+    // Search on Enter key
+    searchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            clearTimeout(searchTimeout);
+            updateDevicesList(e.target.value.trim());
+        }
+    });
+}
+
+function clearSearch() {
+    const searchInput = document.getElementById('deviceSearchInput');
+    const clearBtn = document.getElementById('clearSearchBtn');
+    
+    searchInput.value = '';
+    clearBtn.classList.add('hidden');
+    updateDevicesList();
 }
 
 function toggleDeviceSelection(deviceId, isChecked) {
@@ -143,7 +192,6 @@ function editDeviceName(deviceId, currentName) {
 }
 
 function showNotification(message, type = 'info') {
-    // Simple notification - you can enhance this
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 px-4 py-3 rounded shadow-lg ${
         type === 'success' ? 'bg-emerald-500' : 'bg-red-500'
@@ -159,5 +207,8 @@ function showNotification(message, type = 'info') {
 window.updatePageData = updateDevicesList;
 
 // Initialize
-updateDevicesList();
-setInterval(updateDevicesList, 10000);
+document.addEventListener('DOMContentLoaded', () => {
+    setupSearch();
+    updateDevicesList();
+    setInterval(updateDevicesList, 10000);
+});

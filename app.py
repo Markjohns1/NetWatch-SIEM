@@ -98,9 +98,9 @@ def _on_appcontext_pushed(sender, **extra):
 appcontext_pushed.connect(_on_appcontext_pushed, app)
 
 
-# ==============================
+
 # ROUTES
-# ==============================
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -172,6 +172,23 @@ def get_dashboard_stats():
 def get_devices():
     try:
         devices = db.get_all_devices()
+        return jsonify({'success': True, 'data': devices})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/devices/search')
+@login_required
+def search_devices():
+    try:
+        query = request.args.get('q', '').strip()
+        
+        if not query:
+            # Return all devices if no search query
+            devices = db.get_all_devices()
+        else:
+            # Search devices
+            devices = db.search_devices(query)
+        
         return jsonify({'success': True, 'data': devices})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -639,8 +656,8 @@ def toggle_rule(rule_id):
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-# ==============================
+
 # MAIN ENTRY POINT
-# ==============================
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)

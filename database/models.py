@@ -158,31 +158,58 @@ class Database:
         conn.close()
     
     def add_device(self, ip, mac, hostname=None, vendor=None):
+        """
+        Add or update device. PRESERVES device_name and is_trusted for existing devices!
+        """
         kenya_time = get_kenya_time()
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''
-                INSERT INTO devices (ip_address, mac_address, hostname, vendor, status, first_seen, last_seen)
-                VALUES (?, ?, ?, ?, 'online', ?, ?)
-            ''', (ip, mac, hostname, vendor, kenya_time, kenya_time))
-            device_id = cursor.lastrowid
-            conn.commit()
-            return device_id
-        except sqlite3.IntegrityError:
-            # Device exists - update it
-            cursor.execute('''
-                UPDATE devices 
-                SET ip_address = ?, last_seen = ?, status = 'online',
-                    reconnect_count = reconnect_count + 1,
-                    hostname = COALESCE(?, hostname),
-                    vendor = COALESCE(?, vendor)
-                WHERE mac_address = ?
-            ''', (ip, kenya_time, hostname, vendor, mac))
-            conn.commit()
-            cursor.execute('SELECT id FROM devices WHERE mac_address = ?', (mac,))
-            return cursor.fetchone()[0]
+            # Check if device already exists by MAC address
+            cursor.execute('SELECT id, device_name, is_trusted FROM devices WHERE mac_address = ?', (mac,))
+            existing = cursor.fetchone()
+            
+            if existing:
+                # Device EXISTS - Update it but PRESERVE device_name and is_trusted
+                device_id = existing[0]
+                device_name = existing[1] or 'Unknown'
+                is_trusted = existing[2]
+                
+                cursor.execute('''
+                    UPDATE devices 
+                    SET ip_address = ?, 
+                        last_seen = ?, 
+                        status = 'online',
+                        reconnect_count = reconnect_count + 1,
+                        hostname = COALESCE(?, hostname),
+                        vendor = COALESCE(?, vendor)
+                    WHERE mac_address = ?
+                ''', (ip, kenya_time, hostname, vendor, mac))
+                conn.commit()
+                
+                trust_status = "✓ Trusted" if is_trusted else "⚠ Untrusted"
+                print(f"  ↻ Updated: {device_name} | {ip} | {trust_status}")
+                
+                return device_id
+                
+            else:
+                # Device is NEW - Insert it
+                cursor.execute('''
+                    INSERT INTO devices (ip_address, mac_address, hostname, vendor, status, first_seen, last_seen)
+                    VALUES (?, ?, ?, ?, 'online', ?, ?)
+                ''', (ip, mac, hostname, vendor, kenya_time, kenya_time))
+                device_id = cursor.lastrowid
+                conn.commit()
+                
+                print(f"  ✓ New device: {ip} ({mac})")
+                return device_id
+                
+        except Exception as e:
+            print(f"  ✗ Database error: {e}")
+            conn.rollback()
+            return None
+            
         finally:
             conn.close()
     
@@ -296,6 +323,30 @@ class Database:
         devices = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return devices
+
+
+def search_devices(self, query):
+    """
+    Search devices by IP, MAC, device name, hostname, or vendor
+    """
+    conn = self.get_connection()
+    cursor = conn.cursor()
+    
+    search_term = f"%{query}%"
+    
+    cursor.execute('''
+        SELECT * FROM devices 
+        WHERE ip_address LIKE ? 
+           OR mac_address LIKE ? 
+           OR device_name LIKE ? 
+           OR hostname LIKE ? 
+           OR vendor LIKE ?
+        ORDER BY last_seen DESC
+    ''', (search_term, search_term, search_term, search_term, search_term))
+    
+    devices = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return devices
     
     def get_active_devices(self):
         conn = self.get_connection()

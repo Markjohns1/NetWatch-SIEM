@@ -1,127 +1,71 @@
-# NetWatch SIEM - Network Monitoring System
+NetWatch SIEM - Network Monitoring System
 
-## Overview
+Overview
 
-NetWatch SIEM is a Flask-based network security monitoring system that continuously scans local networks to detect, track, and alert on device activity and potential security threats. The system provides real-time device discovery, event logging, rule-based alerting, and a comprehensive dashboard for network visibility. Built for simplicity and offline operation, it uses SQLite for data persistence and provides both LITE and PRO licensing tiers.
+NetWatch SIEM is a Flask-based network security monitoring system. It continuously scans local networks to detect devices, track activity, and alert on potential security threats. Features include real-time device discovery, event logging, rule-based alerts, and a dashboard for network visibility. The system is lightweight, works offline, and uses SQLite for data storage. Both LITE and PRO versions are supported.
 
-## Recent Changes
+Recent Changes (October 11, 2025)
 
-**October 11, 2025**:
-- Complete system rebuild with modular frontend architecture
-- Fixed critical database connection bug in alert engine (check_frequent_reconnect method)
-- Implemented professional cyber-themed UI with dark mode and glassmorphism effects
-- Created modular template structure (base.html extends pattern)
-- Separated CSS into main.css and cyber-theme.css files
-- Built standalone JavaScript modules for dashboard, devices, and alerts with AJAX updates
-- All Flask routes and API endpoints working correctly
-- System verified and tested by architect
-- Added session-based authentication (username: Mark, password: lizzyjohn)
-- Removed all PRO license restrictions - all features are fully unlocked for everyone
-- Implemented responsive design with hamburger menu for mobile screens
-- All user data (devices, alerts, events, rules) is dynamic from SQLite database
-- Application configuration (license type, feature flags) managed via config.py
+- Rebuilt system with modular frontend structure
+- Fixed critical database connection bug in alert engine
+- Updated UI with dark theme and glassmorphism effects
+- Created modular templates (base.html pattern)
+- Separated CSS into main.css and cyber-theme.css
+- Built standalone JavaScript modules for dashboard, devices, and alerts
+- All Flask routes and APIs fully functional
+- Added session-based login (username: Mark, password: lizzyjohn)
+- Removed PRO restrictions; all features now unlocked
+- Implemented responsive design with mobile-friendly menu
+- All data (devices, alerts, events, rules) dynamically loaded from SQLite
+- Configuration managed via config.py
 
-## User Preferences
+System Architecture
 
-Preferred communication style: Simple, everyday language.
+Backend
 
-## System Architecture
+- Framework: Flask (Python 3.x)
+- Device Scanner: Uses Scapy for ARP scanning and MAC vendor identification. Runs in background thread.
+- Alert Engine: Processes events and triggers alerts based on rules (new devices, frequent reconnections, suspicious activity).
+- Database Layer: SQLite wrapper managing devices, events, alerts, rules, licenses, and logs. Supports dictionary-style access.
+- Design: Service-oriented; modules communicate via database. Background scanning runs in a separate thread.
+- Configuration: Managed in config.py with LITE/PRO feature gating. Settings include scan intervals, alert thresholds, and retention policies.
 
-### Backend Architecture
+Frontend
 
-**Framework**: Flask (Python 3.x) web application with modular component design
+- Stack: HTML5, Vanilla JavaScript, Tailwind CSS, Feather Icons
+- Components: Dashboard, device list, alert panel, event log viewer, configuration panel
+- Data Flow: Frontend fetches JSON from backend; auto-refresh updates data without reloading.
+- Design: Vanilla JavaScript avoids extra dependencies; Tailwind provides fast styling.
+- Theme: Dark "cyber" theme with glassmorphism effects and color-coded status indicators.
 
-**Core Components**:
-- **Device Scanner** (`scanner/device_scanner.py`): Uses Scapy for ARP scanning and network device discovery. Maintains MAC vendor database for device identification. Runs as background thread with configurable scan intervals.
-- **Alert Engine** (`rules/alert_engine.py`): Rule-based alerting system that processes device events and triggers alerts based on predefined conditions (new devices, frequent reconnections, suspicious activity).
-- **Database Layer** (`database/models.py`): SQLite database wrapper managing devices, events, alerts, rules, licenses, and system logs. Uses row factory for dictionary-style access.
+Data Layer
 
-**Design Pattern**: The application follows a service-oriented pattern where independent modules (scanner, alerts, database) communicate through the shared database layer. Background scanning runs in a separate thread to avoid blocking the web interface.
+- Database: SQLite (netwatch.db)
+- Tables: devices, events, alerts, rules, licenses, system_logs
+- Retention: Alerts 30 days, logs 90 days
+- Reasoning: SQLite allows offline, zero-configuration deployment.
 
-**Configuration Management**: Two-tier configuration system (Config and ProConfig classes) in `config.py` enables feature gating between LITE and PRO versions. Settings include scan intervals, alert thresholds, retention policies, and feature flags.
+Security & Monitoring
 
-**Rationale**: Modular architecture allows independent development and testing of scanning, alerting, and data persistence. Thread-based background scanning enables continuous monitoring without impacting UI responsiveness.
+- Device Discovery: ARP scanning with vendor identification
+- Alerts: New devices, frequent reconnections, suspicious MACs, inactivity, traffic spikes (PRO)
+- Trust Management: Mark devices as trusted to reduce noise
+- Licensing: LITE/PRO model with feature flags. PRO enables faster scans, traffic monitoring, extended logs, and email alerts.
 
-### Frontend Architecture
+API
 
-**Technology Stack**: Vanilla JavaScript, HTML5, Tailwind CSS (CDN), Feather Icons
+- Endpoints:
+  - /api/devices – list and manage devices
+  - /api/alerts – retrieve and resolve alerts
+  - /api/events – access event logs
+  - /api/dashboard/stats – real-time stats
+  - /api/devices/{id}/trust – update trust status
+- Format: JSON responses with success boolean and data payload; errors include messages.
 
-**UI Components**:
-- Dashboard with real-time statistics and network activity visualization
-- Device list with trust management and status tracking
-- Alert management panel with severity-based filtering
-- Event logs viewer with filtering capabilities
-- Configuration panel for scan settings and alert preferences
+Dependencies
 
-**Data Flow**: Frontend uses fetch API for asynchronous JSON communication with Flask backend. Auto-refresh mechanisms update data every few seconds without page reloads. Pages extend a base template for consistent navigation and styling.
-
-**Design Choice**: Pure vanilla JavaScript chosen over frameworks to minimize dependencies and maintain simplicity. Tailwind CSS provides rapid styling through utility classes without custom CSS overhead.
-
-**Theme**: Dark "cyber" theme with glassmorphism effects, color-coded status indicators, and monospace fonts for technical aesthetics.
-
-### Data Layer
-
-**Database**: SQLite (`netwatch.db`) with the following schema:
-
-- **devices**: Stores IP, MAC, hostname, vendor, trust status, risk score, timestamps, reconnect counts
-- **events**: Logs all network events with timestamps, severity, type, and device associations
-- **alerts**: Manages triggered alerts with status tracking (active/resolved)
-- **rules**: Configurable alert rules with enable/disable flags
-- **licenses**: License key validation and feature unlocking
-- **system_logs**: Application-level logging
-
-**Design Decision**: SQLite chosen for zero-configuration deployment, offline operation, and simplicity. No external database server required. Row factory pattern enables clean dictionary-based data access.
-
-**Data Retention**: Configurable retention periods (30 days for alerts, 90 days for logs) to manage database growth.
-
-### Security & Monitoring Features
-
-**Device Discovery**: ARP scanning with vendor identification using MAC prefix lookup table. Tracks device lifecycle (first_seen, last_seen, status changes).
-
-**Alert Rules**:
-- New device detection (immediate alert for unknown devices)
-- Reconnection frequency monitoring (threshold-based alerts)
-- Suspicious MAC prefix detection (configurable blacklist)
-- Inactivity timeout tracking
-- Traffic spike detection (PRO feature)
-
-**Trust Management**: Devices can be marked as trusted to reduce noise from known-good devices while maintaining audit logs.
-
-**Licensing System**: Two-tier model (LITE/PRO) with feature flags. PRO unlocks faster scanning, traffic monitoring, extended logs, and email alerts.
-
-### API Design
-
-**RESTful Endpoints**:
-- `/api/devices` - Device listing and management
-- `/api/alerts` - Alert retrieval and resolution
-- `/api/events` - Event log access
-- `/api/dashboard/stats` - Real-time statistics
-- `/api/devices/{id}/trust` - Trust status updates
-
-**Response Format**: Consistent JSON structure with `success` boolean and `data` payload. Error responses include descriptive messages.
-
-## External Dependencies
-
-### Python Libraries
-- **Flask**: Web framework for routing, templating, and request handling
-- **Scapy**: Network packet manipulation for ARP scanning and device discovery
-- **psutil**: System and network statistics (used for traffic monitoring in PRO version)
-- **sqlite3**: Built-in database interface (no external dependency)
-
-### Frontend Libraries (CDN)
-- **Tailwind CSS**: Utility-first CSS framework for responsive design
-- **Feather Icons**: Icon set for UI elements
-- **Chart.js** (implied): Network activity visualization (referenced in templates)
-
-### Network Requirements
-- Local network access for ARP scanning
-- Raw socket access may require elevated privileges for Scapy operations
-
-### Optional Integrations
-- **Email alerts** (PRO feature): SMTP configuration for alert notifications (implementation pending)
-- **MAC vendor database**: Embedded vendor lookup table, could be extended with external OUI database
-
-### Infrastructure
-- **No external APIs**: System operates entirely offline
-- **No cloud services**: All data stored locally in SQLite
-- **No authentication provider**: Simple session-based access (SECRET_KEY configuration)
+- Python: Flask, Scapy, psutil (PRO), sqlite3
+- Frontend: Tailwind CSS, Feather Icons, Chart.js (visualizations)
+- Network: Local network access required; elevated privileges may be needed for Scapy
+- Optional: Email alerts (PRO), external MAC vendor database
+- Infrastructure: Offline operation, all data local, simple session authentication
