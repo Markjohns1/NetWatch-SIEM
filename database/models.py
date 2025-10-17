@@ -116,6 +116,16 @@ class Database:
             )
         ''')
         
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS system_config (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                config_key TEXT UNIQUE NOT NULL,
+                config_value TEXT NOT NULL,
+                data_type TEXT DEFAULT 'string',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         # Add new columns if they don't exist
         try:
             cursor.execute('ALTER TABLE alerts ADD COLUMN marked_safe INTEGER DEFAULT 0')
@@ -131,6 +141,7 @@ class Database:
         conn.close()
         
         self._create_default_rules()
+        self._create_default_config()
     
     def _create_default_rules(self):
         default_rules = [
@@ -153,6 +164,91 @@ class Database:
                 ''', rule)
             except sqlite3.IntegrityError:
                 pass
+        
+        conn.commit()
+        conn.close()
+    
+    def _create_default_config(self):
+        """Initialize default configuration settings"""
+        default_config = [
+            ('scan_interval', '60', 'integer'),
+            ('scan_timeout', '5', 'integer'),
+            ('alert_retention_days', '90', 'integer'),
+            ('log_retention_days', '365', 'integer'),
+            ('traffic_monitoring', 'true', 'boolean'),
+            ('extended_logs', 'true', 'boolean'),
+            ('email_alerts', 'true', 'boolean'),
+            ('scanning_active', 'true', 'boolean')
+        ]
+        
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        for key, value, data_type in default_config:
+            try:
+                cursor.execute('''
+                    INSERT OR IGNORE INTO system_config (config_key, config_value, data_type)
+                    VALUES (?, ?, ?)
+                ''', (key, value, data_type))
+            except sqlite3.IntegrityError:
+                pass
+        
+        conn.commit()
+        conn.close()
+    
+    def get_config(self, key=None):
+        """Get configuration value(s) from database"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if key:
+            cursor.execute('SELECT config_value, data_type FROM system_config WHERE config_key = ?', (key,))
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                value, data_type = result
+                if data_type == 'integer':
+                    return int(value)
+                elif data_type == 'boolean':
+                    return value.lower() == 'true'
+                return value
+            return None
+        else:
+            cursor.execute('SELECT config_key, config_value, data_type FROM system_config')
+            results = cursor.fetchall()
+            conn.close()
+            
+            config = {}
+            for row in results:
+                key, value, data_type = row
+                if data_type == 'integer':
+                    config[key] = int(value)
+                elif data_type == 'boolean':
+                    config[key] = value.lower() == 'true'
+                else:
+                    config[key] = value
+            return config
+    
+    def set_config(self, key, value):
+        """Set configuration value in database"""
+        kenya_time = get_kenya_time()
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # Determine data type
+        data_type = 'string'
+        if isinstance(value, bool):
+            data_type = 'boolean'
+            value = 'true' if value else 'false'
+        elif isinstance(value, int):
+            data_type = 'integer'
+            value = str(value)
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO system_config (config_key, config_value, data_type, updated_at)
+            VALUES (?, ?, ?, ?)
+        ''', (key, value, data_type, kenya_time))
         
         conn.commit()
         conn.close()

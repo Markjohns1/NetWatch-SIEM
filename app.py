@@ -13,8 +13,9 @@ import os
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'netwatch-siem-secret-key-2024')
 
-VALID_USERNAME = 'Mark'
-VALID_PASSWORD = 'lizzyjohn'
+# Use environment variables for credentials with fallback to defaults
+VALID_USERNAME = os.environ.get('ADMIN_USERNAME', 'Mark')
+VALID_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'lizzyjohn')
 
 
 #login protection
@@ -32,12 +33,11 @@ db = Database()
 scanner = DeviceScanner(db)
 alert_engine = AlertEngine(db)
 
-scan_interval = 60
-scanning_active = False
+# Get initial config from database
+scan_interval = db.get_config('scan_interval') or 60
+scanning_active = db.get_config('scanning_active') or False
+SCAN_INTERVAL = scan_interval
 
-
-# background scanner setup
-SCAN_INTERVAL = 60  
 scanner_thread = None
 _scanner_started = False  # Track if scanner started once
 
@@ -46,12 +46,27 @@ def _scanner_loop(app):
     """
     Runs the network scanner in a background thread.
     Must run inside app context so DB access works.
+    Always checks DB for current scanning_active state.
     """
     with app.app_context():
-        global scanning_active
-        scanning_active = True
-        while scanning_active:
+        global SCAN_INTERVAL
+        
+        # Loop while scanning is enabled in database
+        while True:
+            # Always check current scanning state from database
+            current_scanning_active = db.get_config('scanning_active')
+            if current_scanning_active is None:
+                current_scanning_active = True  # Default if not set
+                
+            if not current_scanning_active:
+                app.logger.info("Scanner stopped by configuration")
+                break  # Exit thread if scanning disabled
+            
             try:
+                # Reload scan interval from config before each scan
+                current_interval = db.get_config('scan_interval') or 60
+                SCAN_INTERVAL = current_interval
+                
                 # Scan network devices
                 devices = scanner.scan_network()
                 app.logger.info(f"Scanner found {len(devices)} devices at {datetime.now()}")
@@ -81,14 +96,27 @@ def _scanner_loop(app):
 def start_background_scanner():
     """
     Starts the background scanner thread safely once.
+    Only starts if scanning_active is enabled in config.
     """
     global scanner_thread, _scanner_started
-    if _scanner_started:
-        return  # Already started once
-    scanner_thread = threading.Thread(target=_scanner_loop, args=(app,), daemon=True)
-    scanner_thread.start()
-    _scanner_started = True
-    app.logger.info("Background scanner started.")
+    
+    # Only prevent restart if thread is already running
+    if _scanner_started and scanner_thread and scanner_thread.is_alive():
+        return  # Already running
+    
+    # Check if scanning is enabled in config before starting
+    scanning_enabled = db.get_config('scanning_active')
+    if scanning_enabled is None:
+        scanning_enabled = True  # Default to enabled if not set
+    
+    if scanning_enabled:
+        scanner_thread = threading.Thread(target=_scanner_loop, args=(app,), daemon=True)
+        scanner_thread.start()
+        _scanner_started = True
+        app.logger.info("Background scanner started.")
+    else:
+        # Don't set _scanner_started to allow future enabling
+        app.logger.info("Background scanner disabled in configuration.")
 
 
 def _on_appcontext_pushed(sender, **extra):
@@ -282,8 +310,12 @@ def get_events():
 @app.route('/api/scan/status')
 @login_required
 def scan_status():
-    global scanning_active
-    return jsonify({'success': True, 'scanning': scanning_active, 'interval': scan_interval})
+    # Always read from database to get current values
+    current_interval = db.get_config('scan_interval') or 60
+    current_scanning = db.get_config('scanning_active')
+    if current_scanning is None:
+        current_scanning = True
+    return jsonify({'success': True, 'scanning': current_scanning, 'interval': current_interval})
 
 
 @app.route('/api/scan/now', methods=['POST'])
@@ -341,31 +373,31 @@ def get_activity_timeline():
 @login_required
 def get_config():
     try:
-        from config import Config
+        # Get all config from database - always fresh
+        db_config = db.get_config() or {}
         
         conn = db.get_connection()
         cursor = conn.cursor()
         cursor.execute('SELECT name, enabled FROM rules')
         rules_data = cursor.fetchall()
         rules_dict = {row['name']: bool(row['enabled']) for row in rules_data}
+        conn.close()
         
         config_data = {
-            'scan_interval': scan_interval,
-            'scanning_active': scanning_active,
-            'license_type': Config.LICENSE_TYPE,
-            'traffic_monitoring': Config.TRAFFIC_MONITORING,
-            'extended_logs': Config.EXTENDED_LOGS,
-            'email_alerts': Config.EMAIL_ALERTS,
+            'scan_interval': db_config.get('scan_interval', 60),
+            'scanning_active': db_config.get('scanning_active', True),
+            'license_type': 'FULL',
+            'traffic_monitoring': db_config.get('traffic_monitoring', True),
+            'extended_logs': db_config.get('extended_logs', True),
+            'email_alerts': db_config.get('email_alerts', True),
             'rules': {
                 'new_device_alert': rules_dict.get('new_device_detected', True),
                 'reconnect_alert': rules_dict.get('frequent_reconnect', True),
                 'suspicious_mac_alert': rules_dict.get('suspicious_mac', True),
-                'traffic_monitoring': Config.TRAFFIC_MONITORING,
-                'advanced_logging': Config.EXTENDED_LOGS
+                'traffic_monitoring': db_config.get('traffic_monitoring', True),
+                'advanced_logging': db_config.get('extended_logs', True)
             }
         }
-        
-        conn.close()
         
         return jsonify({'success': True, 'data': config_data})
     except Exception as e:
@@ -468,8 +500,7 @@ def get_timezone_info():
 @login_required
 def save_config():
     try:
-        global scan_interval, SCAN_INTERVAL
-        from config import Config
+        global scan_interval, SCAN_INTERVAL, scanning_active
         data = request.json
         
         # Update scan interval if provided
@@ -478,13 +509,23 @@ def save_config():
             if 30 <= new_interval <= 600:  # Validate range
                 scan_interval = new_interval
                 SCAN_INTERVAL = new_interval
+                db.set_config('scan_interval', new_interval)
                 print(f"Scan interval updated to {new_interval} seconds")
         
-        # Update config in database
+        # Update scanning_active if provided
+        if 'scanning_active' in data:
+            scanning_active = bool(data['scanning_active'])
+            db.set_config('scanning_active', scanning_active)
+        
+        # Update other config settings
+        for key in ['traffic_monitoring', 'extended_logs', 'email_alerts']:
+            if key in data:
+                db.set_config(key, bool(data[key]))
+        
+        # Update rules in database
         conn = db.get_connection()
         cursor = conn.cursor()
         
-        # Update rules
         if 'rules' in data:
             for rule_name, enabled in data['rules'].items():
                 rule_map = {
@@ -523,14 +564,14 @@ def save_config():
 @login_required
 def stop_scanning():
     try:
-        global scanning_active
-        scanning_active = False
+        # Update config - scanner loop will detect and stop
+        db.set_config('scanning_active', False)
         db.add_event(
             event_type='scan_stopped',
             severity='info',
             description='Network scanning manually stopped'
         )
-        return jsonify({'success': True, 'message': 'Scanning stopped'})
+        return jsonify({'success': True, 'message': 'Scanning will stop after current cycle'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -539,15 +580,25 @@ def stop_scanning():
 @login_required
 def start_scanning():
     try:
-        global scanning_active
-        if not scanning_active:
-            scanning_active = True
-            start_background_scanner()
-            db.add_event(
-                event_type='scan_started',
-                severity='info',
-                description='Network scanning manually started'
-            )
+        global scanner_thread, _scanner_started
+        
+        # Update config first
+        db.set_config('scanning_active', True)
+        
+        # Start scanner if not already running
+        if scanner_thread is None or not scanner_thread.is_alive():
+            scanner_thread = threading.Thread(target=_scanner_loop, args=(app,), daemon=True)
+            scanner_thread.start()
+            _scanner_started = True
+            app.logger.info("Scanner thread started via API")
+        else:
+            app.logger.info("Scanner thread already running")
+            
+        db.add_event(
+            event_type='scan_started',
+            severity='info',
+            description='Network scanning manually started'
+        )
         return jsonify({'success': True, 'message': 'Scanning started'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500

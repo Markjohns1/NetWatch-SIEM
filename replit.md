@@ -41,9 +41,10 @@ NetWatch SIEM is a Flask-based network security monitoring system that continuou
 - **devices**: Network devices with IP, MAC, vendor info
 - **events**: System events and activities
 - **alerts**: Security alerts and notifications
-- **rules**: Alert rules configuration
+- **rules**: Alert rules configuration (now dynamically evaluated!)
 - **licenses**: License management
 - **system_logs**: System operation logs
+- **system_config**: Persistent configuration storage (NEW!)
 
 ## API Endpoints
 
@@ -91,7 +92,17 @@ System configuration is managed in `config.py`:
 - Extended logs: Enabled
 - Email alerts: Enabled
 
-## Recent Updates (October 2025)
+## Recent Updates (October 17, 2025)
+
+### Major Enhancements
+- **Configuration Persistence System**: All settings now persist to database (system_config table)
+- **Dynamic Configuration Application**: Scanner and alert engine read config from database in real-time
+- **Dynamic Rule Evaluation**: Alert engine now evaluates custom rules from database with conditions/thresholds
+- **Environment-Based Credentials**: Replaced hardcoded login with environment variables (ADMIN_USERNAME, ADMIN_PASSWORD)
+- **Complete CRUD Operations**: All device, alert, and event operations fully functional
+- **Real-Time Config Updates**: Configuration changes immediately affect system behavior
+
+### Previous Updates
 - Modular frontend structure with separated CSS and JavaScript
 - Fixed critical database connection bugs
 - Updated UI with dark cyber theme
@@ -115,8 +126,26 @@ System configuration is managed in `config.py`:
 - Manual device scanning is available via API
 
 ## Security Considerations
-- Change default login credentials in production
-- Session secret key should be set via environment variable
+- **Login credentials**: Set ADMIN_USERNAME and ADMIN_PASSWORD environment variables
+  - Default fallback: username=Mark, password=lizzyjohn (change in production!)
+- Session secret key can be set via SESSION_SECRET environment variable
 - SQLite database is suitable for small to medium deployments
 - Consider upgrading to PostgreSQL for production use
 - Network scanning features require appropriate permissions
+
+## Custom Rules System
+The alert engine now supports dynamic rule evaluation from the database:
+- **Conditions**: device_first_seen, reconnect_count, inactive_duration, mac_pattern, vendor_unknown
+- **Configurable Thresholds**: Each rule can have custom threshold values
+- **Real-Time Updates**: Rules are reloaded after any changes
+- **Severity Levels**: low, medium, high
+- Add/Edit/Delete rules via the /rules page or API
+
+## Configuration System
+All configuration is now persisted in the database:
+- **scan_interval**: Network scan frequency (30-600 seconds)
+- **scanning_active**: Enable/disable background scanning
+- **traffic_monitoring**: Enable traffic analysis features
+- **extended_logs**: Enable extended logging
+- **email_alerts**: Enable email notifications
+- Changes apply immediately without restart!

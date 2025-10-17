@@ -191,37 +191,124 @@ class AlertEngine:
                 device_id=device['id']
             )
     
-    def process_device_alerts(self, device_id):
-        """Process alerts for a device - prevents duplicates"""
+    def evaluate_custom_rule(self, rule, device_id):
+        """Evaluate a custom rule from database dynamically"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM devices WHERE id = ?', (device_id,) )
+        cursor.execute('SELECT * FROM devices WHERE id = ?', (device_id,))
+        device = cursor.fetchone()
+        
+        if not device:
+            conn.close()
+            return False
+        
+        condition = rule['condition']
+        threshold = rule['threshold']
+        rule_name = rule['name']
+        
+        # Check if alert already exists for this rule
+        cursor.execute('''
+            SELECT COUNT(*) FROM alerts 
+            WHERE device_id = ? AND alert_type = ? AND status = 'active'
+        ''', (device_id, rule_name))
+        existing = cursor.fetchone()[0]
+        
+        triggered = False
+        description = ""  # Initialize description
+        
+        # Evaluate different condition types
+        if condition == 'device_first_seen':
+            # Check if device is new (within threshold days)
+            first_seen = datetime.strptime(device['first_seen'], '%Y-%m-%d %H:%M:%S')
+            days_old = (datetime.now() - first_seen).total_seconds() / 86400
+            if days_old <= threshold and existing == 0:
+                triggered = True
+                description = f"New device detected: {device['ip_address']} ({device['mac_address']})"
+        
+        elif condition == 'reconnect_count':
+            # Check if reconnect count exceeds threshold
+            if device['reconnect_count'] >= threshold and existing == 0:
+                triggered = True
+                description = f"Device {device['ip_address']} reconnected {device['reconnect_count']} times (threshold: {threshold})"
+        
+        elif condition == 'inactive_duration':
+            # Check if device has been inactive for threshold seconds
+            last_seen = datetime.strptime(device['last_seen'], '%Y-%m-%d %H:%M:%S')
+            inactive_seconds = (datetime.now() - last_seen).total_seconds()
+            if inactive_seconds >= threshold and device['status'] == 'offline' and existing == 0:
+                triggered = True
+                description = f"Device {device['ip_address']} inactive for {int(inactive_seconds/3600)} hours"
+        
+        elif condition == 'mac_pattern':
+            # Check for suspicious MAC patterns
+            suspicious_prefixes = ['00:00:00', 'FF:FF:FF']
+            mac_prefix = device['mac_address'][:8]
+            if mac_prefix in suspicious_prefixes and existing == 0:
+                triggered = True
+                description = f"Suspicious MAC address detected: {device['mac_address']}"
+        
+        elif condition == 'vendor_unknown':
+            # Check if vendor is unknown
+            if device['vendor'] == 'Unknown' and device['is_trusted'] == 0 and existing == 0:
+                triggered = True
+                description = f"Device with unknown vendor: {device['ip_address']}"
+        
+        elif condition == 'ip_changed':
+            # This would need previous IP tracking - skip for now
+            pass
+        
+        conn.close()
+        
+        # Create alert if rule was triggered
+        if triggered:
+            self.db.add_alert(
+                alert_type=rule_name,
+                severity=rule['severity'],
+                title=f"Rule Triggered: {rule_name}",
+                description=description,
+                device_id=device_id,
+                metadata={'rule_id': rule['id'], 'threshold': threshold}
+            )
+            return True
+        
+        return False
+    
+    def process_device_alerts(self, device_id):
+        """Process alerts for a device - checks both hardcoded and custom rules"""
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM devices WHERE id = ?', (device_id,))
         device = cursor.fetchone()
         conn.close()
         
         if not device:
             return
         
-        # Only check new device alert if device was just discovered
-        # Calculate hours since first_seen
+        # Reload rules to get latest
+        self.reload_rules()
+        
+        # Process custom rules from database
+        for rule in self.rules:
+            try:
+                self.evaluate_custom_rule(rule, device_id)
+            except Exception as e:
+                print(f"Error evaluating rule {rule['name']}: {e}")
+        
+        # Legacy hardcoded checks (keeping for backward compatibility)
         try:
             first_seen = datetime.strptime(device['first_seen'], '%Y-%m-%d %H:%M:%S')
             hours_since_first = (datetime.now() - first_seen).total_seconds() / 3600
             
-            # Only alert if device is less than 24 hours old
             if hours_since_first < 24:
                 self.check_new_device(device_id)
         except:
             pass
         
-        # Check reconnect count (only if excessive)
         if device['reconnect_count'] >= 10:
             self.check_frequent_reconnect(device_id)
         
-        # Check suspicious MAC
         self.check_suspicious_mac(device_id, device['mac_address'])
         
-        # Check unknown vendor (but only alert once per device)
         if device['vendor'] == 'Unknown' and device['is_trusted'] == 0:
             self.check_unknown_vendor(device_id, device['vendor'])
     
