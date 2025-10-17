@@ -69,3 +69,7 @@ Dependencies
 - Network: Local network access required; elevated privileges may be needed for Scapy
 - Optional: Email alerts (PRO), external MAC vendor database
 - Infrastructure: Offline operation, all data local, simple session authentication
+
+
+
+

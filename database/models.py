@@ -255,19 +255,20 @@ class Database:
     
     def add_device(self, ip, mac, hostname=None, vendor=None):
         """
-        Add or update device. PRESERVES device_name and is_trusted for existing devices!
+        Add or update device. Checks by MAC first, then by IP.
+        PRESERVES device_name and is_trusted for existing devices!
         """
         kenya_time = get_kenya_time()
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            # Check if device already exists by MAC address
+            # First, try to find by MAC address (most reliable)
             cursor.execute('SELECT id, device_name, is_trusted FROM devices WHERE mac_address = ?', (mac,))
             existing = cursor.fetchone()
             
             if existing:
-                # Device EXISTS - Update it but PRESERVE device_name and is_trusted
+                # Found by MAC - Update existing device
                 device_id = existing[0]
                 device_name = existing[1] or 'Unknown'
                 is_trusted = existing[2]
@@ -280,29 +281,55 @@ class Database:
                         reconnect_count = reconnect_count + 1,
                         hostname = COALESCE(?, hostname),
                         vendor = COALESCE(?, vendor)
-                    WHERE mac_address = ?
-                ''', (ip, kenya_time, hostname, vendor, mac))
+                    WHERE id = ?
+                ''', (ip, kenya_time, hostname, vendor, device_id))
                 conn.commit()
                 
-                trust_status = "✓ Trusted" if is_trusted else "⚠ Untrusted"
-                print(f"  ↻ Updated: {device_name} | {ip} | {trust_status}")
+                trust_status = "TRUSTED" if is_trusted else "UNTRUSTED"
+                print(f"  [UPDATE] {device_name} | {ip} | {trust_status}")
                 
                 return device_id
+            
+            # MAC not found - Try to find by IP address (for generated MACs)
+            cursor.execute('SELECT id, device_name, is_trusted FROM devices WHERE ip_address = ?', (ip,))
+            existing_by_ip = cursor.fetchone()
+            
+            if existing_by_ip:
+                # Found by IP - Update existing device, preserve name and trust
+                device_id = existing_by_ip[0]
+                device_name = existing_by_ip[1] or 'Unknown'
+                is_trusted = existing_by_ip[2]
                 
-            else:
-                # Device is NEW - Insert it
                 cursor.execute('''
-                    INSERT INTO devices (ip_address, mac_address, hostname, vendor, status, first_seen, last_seen)
-                    VALUES (?, ?, ?, ?, 'online', ?, ?)
-                ''', (ip, mac, hostname, vendor, kenya_time, kenya_time))
-                device_id = cursor.lastrowid
+                    UPDATE devices 
+                    SET mac_address = ?, 
+                        last_seen = ?, 
+                        status = 'online',
+                        reconnect_count = reconnect_count + 1,
+                        hostname = COALESCE(?, hostname),
+                        vendor = COALESCE(?, vendor)
+                    WHERE id = ?
+                ''', (mac, kenya_time, hostname, vendor, device_id))
                 conn.commit()
                 
-                print(f"  ✓ New device: {ip} ({mac})")
+                trust_status = "TRUSTED" if is_trusted else "UNTRUSTED"
+                print(f"  [UPDATE] {device_name} | {ip} | MAC: {mac} | {trust_status}")
+                
                 return device_id
+            
+            # Device is completely NEW - Insert it
+            cursor.execute('''
+                INSERT INTO devices (ip_address, mac_address, hostname, vendor, status, first_seen, last_seen)
+                VALUES (?, ?, ?, ?, 'online', ?, ?)
+            ''', (ip, mac, hostname, vendor, kenya_time, kenya_time))
+            device_id = cursor.lastrowid
+            conn.commit()
+            
+            print(f"  [NEW] {ip} ({mac})")
+            return device_id
                 
         except Exception as e:
-            print(f"  ✗ Database error: {e}")
+            print(f"  [ERROR] Database error: {e}")
             conn.rollback()
             return None
             

@@ -8,6 +8,12 @@ import threading
 import time
 from datetime import datetime
 import os
+from datetime import datetime, timedelta
+from scanner.device_scanner import Colors
+import logging
+# Silence Flask's request logging
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 #app configuration
 app = Flask(__name__)
@@ -28,9 +34,13 @@ def login_required(f):
     return decorated_function
 
 
-#db setup
 db = Database()
-scanner = DeviceScanner(db)
+
+# Force enable scanning on startup
+db.set_config('scanning_active', True)
+print(f"{Colors.CYAN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Auto-enabling network scanner...")
+
+scanner = DeviceScanner(db, verbose=False, show_banner=True)
 alert_engine = AlertEngine(db)
 
 # Get initial config from database
@@ -67,7 +77,7 @@ def _scanner_loop(app):
                 current_interval = db.get_config('scan_interval') or 60
                 SCAN_INTERVAL = current_interval
                 
-                # Scan network devices
+                # Scan network devices (silently)
                 devices = scanner.scan_network()
                 app.logger.info(f"Scanner found {len(devices)} devices at {datetime.now()}")
 
@@ -92,7 +102,6 @@ def _scanner_loop(app):
 
             time.sleep(SCAN_INTERVAL)
 
-
 def start_background_scanner():
     """
     Starts the background scanner thread safely once.
@@ -102,21 +111,26 @@ def start_background_scanner():
     
     # Only prevent restart if thread is already running
     if _scanner_started and scanner_thread and scanner_thread.is_alive():
-        return  # Already running
+        return  # Already running - don't print anything
+    
+    # If already tried to start, don't spam messages
+    if _scanner_started:
+        return
     
     # Check if scanning is enabled in config before starting
     scanning_enabled = db.get_config('scanning_active')
     if scanning_enabled is None:
         scanning_enabled = True  # Default to enabled if not set
+        db.set_config('scanning_active', True)  # Save default
     
     if scanning_enabled:
         scanner_thread = threading.Thread(target=_scanner_loop, args=(app,), daemon=True)
         scanner_thread.start()
         _scanner_started = True
-        app.logger.info("Background scanner started.")
+        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}✓ Background network scanning: ACTIVE{Colors.RESET}\n")
     else:
-        # Don't set _scanner_started to allow future enabling
-        app.logger.info("Background scanner disabled in configuration.")
+        _scanner_started = True  # Mark as attempted to prevent spam
+        print(f"{Colors.YELLOW}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.YELLOW}>>> Background network scanning: DISABLED{Colors.RESET}\n")
 
 
 def _on_appcontext_pushed(sender, **extra):
@@ -348,22 +362,29 @@ def scan_now():
 @app.route('/api/activity/timeline')
 @login_required
 def get_activity_timeline():
+    """
+    Returns real-time activity data grouped by minute (last 2 hours)
+    Updates continuously as events are created
+    """
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+        
+        # Get events from last 2 hours, grouped by minute
         cursor.execute('''
             SELECT 
-                strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
+                strftime('%Y-%m-%d %H:%M:00', timestamp) as minute,
                 COUNT(*) as count
             FROM events
-            WHERE datetime(timestamp) >= datetime('now', '-24 hours')
-            GROUP BY hour
-            ORDER BY hour
+            WHERE datetime(timestamp) >= datetime('now', '-120 minutes')
+            GROUP BY minute
+            ORDER BY minute ASC
         ''')
         
         timeline_data = [{'time': row[0], 'count': row[1]} for row in cursor.fetchall()]
         conn.close()
         
+        # If no data, return empty array (chart will show empty but won't error)
         return jsonify({'success': True, 'data': timeline_data})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -403,8 +424,6 @@ def get_config():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# Add these new routes to your existing app.py file
-# Insert them before the "# MAIN ENTRY POINT" section
 
 @app.route('/api/devices/delete', methods=['POST'])
 @login_required
@@ -475,9 +494,6 @@ def delete_events():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-
-
-
 @app.route('/api/timezone/info')
 @login_required
 def get_timezone_info():
@@ -492,9 +508,6 @@ def get_timezone_info():
         'current_time': kenya_time.strftime('%Y-%m-%d %H:%M:%S')
     })
 
-
-# Add these UPDATED routes to your app.py
-# Replace the existing versions if they exist
 
 @app.route('/api/config/save', methods=['POST'])
 @login_required
@@ -604,8 +617,6 @@ def start_scanning():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# Add this route with the other page routes
-
 @app.route('/rules')
 @login_required
 def rules_page():
@@ -707,6 +718,7 @@ def toggle_rule(rule_id):
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 # MAIN ENTRY POINT
 
