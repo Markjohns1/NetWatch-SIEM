@@ -22,7 +22,7 @@ class AlertEngine:
         conn = self.db.get_connection()
         cursor = conn.cursor()
         
-        # Check if device is actually new (first seen today)
+        # Check if device is actually new ... first seen today
         cursor.execute('''
             SELECT ip_address, mac_address, vendor, device_name, first_seen
             FROM devices 
@@ -167,12 +167,12 @@ class AlertEngine:
         return False
     
     def check_device_inactive(self):
-        """Mark devices as offline if not seen in 2 hours (not 1 hour!)"""
+        """Mark devices as offline if not seen in 5 seconds"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
         
-        # Use 2 hours instead of 1 hour to avoid false positives
-        inactive_threshold = datetime.now() - timedelta(hours=2)
+        # Use 5 seconds instead of 2 hours for immediate offline detection
+        inactive_threshold = datetime.now() - timedelta(seconds=5)
         cursor.execute('''
             SELECT id, ip_address, device_name, last_seen 
             FROM devices 

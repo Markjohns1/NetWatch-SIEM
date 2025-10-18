@@ -2,7 +2,7 @@ import sqlite3
 from datetime import datetime, timezone, timedelta
 import json
 
-# Kenya timezone (EAT - East Africa Time: UTC+3)
+# Kenya timezone 
 KENYA_TZ = timezone(timedelta(hours=3))
 
 def get_kenya_time():
@@ -17,7 +17,7 @@ class Database:
     def get_connection(self):
         """
         Creates and returns a thread-safe SQLite connection.
-        This allows the Flask app and background scanner to share the same database.
+        This allows the Flask app and bakground scanner to share the same database.
         """
         conn = sqlite3.connect(
             self.db_path,
@@ -126,7 +126,7 @@ class Database:
             )
         ''')
         
-        # Add new columns if they don't exist
+        # i am Adding new columns if they don't exist
         try:
             cursor.execute('ALTER TABLE alerts ADD COLUMN marked_safe INTEGER DEFAULT 0')
         except:
@@ -317,7 +317,7 @@ class Database:
                 
                 return device_id
             
-            # Device is completely NEW - Insert it
+            # Device is completely NEW...here, i Insert it
             cursor.execute('''
                 INSERT INTO devices (ip_address, mac_address, hostname, vendor, status, first_seen, last_seen)
                 VALUES (?, ?, ?, ?, 'online', ?, ?)
@@ -382,7 +382,7 @@ class Database:
         return event_id
     
     def delete_events(self, event_ids=None):
-        """Delete events - if no IDs provided, delete all"""
+        """Delete events... if no IDs provided, delete all"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
@@ -424,7 +424,7 @@ class Database:
         conn.close()
     
     def delete_alerts(self, alert_ids=None):
-        """Delete alerts - if no IDs provided, delete all resolved ones"""
+        """Delete alerts ... if no IDs provided, delete all resolved ones"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
@@ -447,6 +447,10 @@ class Database:
         conn.close()
         return devices
 
+
+
+
+    #searchig feature, globle one
     def search_devices(self, query):
         """
         Search devices by IP, MAC, device name, hostname, or vendor
