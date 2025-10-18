@@ -316,6 +316,14 @@ class DeviceScanner:
         self.banner_shown = False
         self.show_banner = show_banner
         
+        # Initialize hostname resolver
+        self.hostname_resolver = None
+        try:
+            from .hostname_resolver import hostname_resolver
+            self.hostname_resolver = hostname_resolver
+        except ImportError:
+            pass  # Will use fallback method
+        
         if self.show_banner and not self.banner_shown:
             self._print_startup_banner()
 
@@ -485,22 +493,37 @@ class DeviceScanner:
         return devices
 
     def get_hostname(self, ip):
-        """Enhanced hostname resolution"""
-        try:
-            from .hostname_resolver import hostname_resolver
-            return hostname_resolver.resolve_hostname(ip)
-        except ImportError:
+        """Enhanced hostname resolution with multiple fallback methods"""
+        # Try enhanced resolver first
+        if self.hostname_resolver:
             try:
-                hostname = socket.gethostbyaddr(ip)[0]
-                return hostname.split('.')[0] if hostname else None
-            except:
-                return None
+                hostname = self.hostname_resolver.resolve_hostname(ip)
+                if hostname:
+                    return hostname
+            except Exception:
+                pass
+        
+        # Fallback to basic DNS lookup
+        try:
+            hostname = socket.gethostbyaddr(ip)[0]
+            return hostname.split('.')[0] if hostname else None
         except:
             return None
 
     def _add_network_context(self, devices, network_info):
         """Silent device context enrichment and saving"""
         saved_count = 0
+        
+        # Collect all IPs for batch hostname resolution
+        device_ips = [d['ip'] for d in devices if d.get('ip') and d['ip'] != 'Unknown']
+        
+        # Batch resolve hostnames if enhanced resolver available
+        hostname_map = {}
+        if self.hostname_resolver and device_ips:
+            try:
+                hostname_map = self.hostname_resolver.resolve_multiple_hostnames(device_ips)
+            except Exception:
+                pass  # Will fall back to individual resolution
         
         for device in devices:
             try:
@@ -511,12 +534,16 @@ class DeviceScanner:
                     'trust_level': self._calculate_trust_level(device, network_info),
                 }
                 
-                try:
-                    hostname = self.get_hostname(device['ip'])
-                    if hostname:
+                # Get hostname from batch resolution or individual lookup
+                device_ip = device.get('ip')
+                if device_ip and device_ip in hostname_map:
+                    device['hostname'] = hostname_map[device_ip]
+                else:
+                    try:
+                        hostname = self.get_hostname(device_ip) if device_ip else None
                         device['hostname'] = hostname
-                except:
-                    device['hostname'] = None
+                    except:
+                        device['hostname'] = None
                 
                 if not device.get('ip') or device['ip'] == 'Unknown':
                     continue
@@ -585,11 +612,11 @@ class DeviceScanner:
         self.scan_thread = threading.Thread(target=scan_loop, daemon=True)
         self.scan_thread.start()
         
-        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}Continuous scanning started (interval: {interval}s){Colors.RESET}")
+        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}✓ Continuous scanning started (interval: {interval}s){Colors.RESET}")
 
     def stop_scan(self):
         self.scanning = False
         if self.scan_thread:
             self.scan_thread.join(timeout=5)
         
-        print(f"{Colors.YELLOW}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.YELLOW}Continuous scanning stopped{Colors.RESET}")
+        print(f"{Colors.YELLOW}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.YELLOW}⚠ Continuous scanning stopped{Colors.RESET}")

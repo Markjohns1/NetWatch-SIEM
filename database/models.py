@@ -17,7 +17,7 @@ class Database:
     def get_connection(self):
         """
         Creates and returns a thread-safe SQLite connection.
-        This allows the Flask app and bakground scanner to share the same database.
+        This allows the Flask app and background scanner to share the same database.
         """
         conn = sqlite3.connect(
             self.db_path,
@@ -126,7 +126,7 @@ class Database:
             )
         ''')
         
-        # i am Adding new columns if they don't exist
+        # Adding new columns if they don't exist
         try:
             cursor.execute('ALTER TABLE alerts ADD COLUMN marked_safe INTEGER DEFAULT 0')
         except:
@@ -255,24 +255,21 @@ class Database:
     
     def add_device(self, ip, mac, hostname=None, vendor=None):
         """
-        Add or update device. Checks by MAC first, then by IP.
-        PRESERVES device_name and is_trusted for existing devices!
+        Add or update device silently. Returns device_id.
+        Handles UNIQUE constraint gracefully.
         """
         kenya_time = get_kenya_time()
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            # First, try to find by MAC address (most reliable)
-            cursor.execute('SELECT id, device_name, is_trusted FROM devices WHERE mac_address = ?', (mac,))
+            # Check if device exists by MAC address
+            cursor.execute('SELECT id FROM devices WHERE mac_address = ?', (mac,))
             existing = cursor.fetchone()
             
             if existing:
-                # Found by MAC - Update existing device
+                # Update existing device
                 device_id = existing[0]
-                device_name = existing[1] or 'Unknown'
-                is_trusted = existing[2]
-                
                 cursor.execute('''
                     UPDATE devices 
                     SET ip_address = ?, 
@@ -284,22 +281,16 @@ class Database:
                     WHERE id = ?
                 ''', (ip, kenya_time, hostname, vendor, device_id))
                 conn.commit()
-                
-                trust_status = "TRUSTED" if is_trusted else "UNTRUSTED"
-                print(f"  [UPDATE] {device_name} | {ip} | {trust_status}")
-                
+                conn.close()
                 return device_id
             
-            # MAC not found - Try to find by IP address (for generated MACs)
-            cursor.execute('SELECT id, device_name, is_trusted FROM devices WHERE ip_address = ?', (ip,))
+            # Check by IP (for devices with generated MACs)
+            cursor.execute('SELECT id FROM devices WHERE ip_address = ?', (ip,))
             existing_by_ip = cursor.fetchone()
             
             if existing_by_ip:
-                # Found by IP - Update existing device, preserve name and trust
+                # Update existing device found by IP
                 device_id = existing_by_ip[0]
-                device_name = existing_by_ip[1] or 'Unknown'
-                is_trusted = existing_by_ip[2]
-                
                 cursor.execute('''
                     UPDATE devices 
                     SET mac_address = ?, 
@@ -311,30 +302,37 @@ class Database:
                     WHERE id = ?
                 ''', (mac, kenya_time, hostname, vendor, device_id))
                 conn.commit()
-                
-                trust_status = "TRUSTED" if is_trusted else "UNTRUSTED"
-                print(f"  [UPDATE] {device_name} | {ip} | MAC: {mac} | {trust_status}")
-                
+                conn.close()
                 return device_id
             
-            # Device is completely NEW...here, i Insert it
+            # Insert new device
             cursor.execute('''
                 INSERT INTO devices (ip_address, mac_address, hostname, vendor, status, first_seen, last_seen)
                 VALUES (?, ?, ?, ?, 'online', ?, ?)
             ''', (ip, mac, hostname, vendor, kenya_time, kenya_time))
             device_id = cursor.lastrowid
             conn.commit()
-            
-            print(f"  [NEW] {ip} ({mac})")
+            conn.close()
             return device_id
                 
-        except Exception as e:
-            print(f"  [ERROR] Database error: {e}")
-            conn.rollback()
+        except sqlite3.IntegrityError as e:
+            # UNIQUE constraint failed - device already exists
+            # Try to get the device_id and return it
+            try:
+                cursor.execute('SELECT id FROM devices WHERE mac_address = ? OR ip_address = ?', (mac, ip))
+                result = cursor.fetchone()
+                if result:
+                    conn.close()
+                    return result[0]
+            except:
+                pass
+            conn.close()
             return None
             
-        finally:
+        except Exception as e:
+            conn.rollback()
             conn.close()
+            return None
     
     def update_device_status(self, device_id, status):
         kenya_time = get_kenya_time()
@@ -424,7 +422,7 @@ class Database:
         conn.close()
     
     def delete_alerts(self, alert_ids=None):
-        """Delete alerts ... if no IDs provided, delete all resolved ones"""
+        """Delete alerts... if no IDs provided, delete all resolved ones"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
@@ -447,10 +445,6 @@ class Database:
         conn.close()
         return devices
 
-
-
-
-    #searchig feature, globle one
     def search_devices(self, query):
         """
         Search devices by IP, MAC, device name, hostname, or vendor

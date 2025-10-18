@@ -123,16 +123,18 @@ def _scanner_loop(app):
                         
                         smart_alert_engine.process_smart_alerts(device_id)
                     else:
-                        # New device detected
-                        current_devices.add(device_dict.get('id', 0))
-                        device_status_changes.append({
-                            'device_id': device_dict.get('id', 0),
-                            'ip': device_dict['ip'],
-                            'mac': device_dict['mac'],
-                            'status': 'online',
-                            'change': 'new_device'
-                        })
-                        print(f"{Colors.CYAN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_CYAN}[NEW]{Colors.RESET} {device_dict['ip']} ({device_dict['mac']}) - {device_dict.get('vendor', 'Unknown')}")
+                        # New device detected - get the ID from what add_device returns
+                        device_id = device_dict.get('device_id')
+                        if device_id:
+                            current_devices.add(device_id)
+                            device_status_changes.append({
+                                'device_id': device_id,
+                                'ip': device_dict['ip'],
+                                'mac': device_dict['mac'],
+                                'status': 'online',
+                                'change': 'new_device'
+                            })
+                            print(f"{Colors.CYAN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_CYAN}[NEW]{Colors.RESET} {device_dict['ip']} ({device_dict['mac']}) - {device_dict.get('vendor', 'Unknown')}")
 
                     conn.close()
 
@@ -188,13 +190,11 @@ def start_background_scanner():
     """
     global scanner_thread, _scanner_started
     
-    # Only prevent restart if thread is already running
-    if _scanner_started and scanner_thread and scanner_thread.is_alive():
-        return  # Already running - don't print anything
-    
-    # If already tried to start, don't spam messages
+    # PREVENT ANY DUPLICATE CALLS - Set this FIRST
     if _scanner_started:
         return
+    
+    _scanner_started = True  # Mark as started immediately
     
     # Check if scanning is enabled in config before starting
     scanning_enabled = db.get_config('scanning_active')
@@ -205,10 +205,8 @@ def start_background_scanner():
     if scanning_enabled:
         scanner_thread = threading.Thread(target=_scanner_loop, args=(app,), daemon=True)
         scanner_thread.start()
-        _scanner_started = True
         print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}✓ Background scanning: ACTIVE{Colors.RESET}\n")
     else:
-        _scanner_started = True  # Mark as attempted to prevent spam
         print(f"{Colors.YELLOW}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.YELLOW}⚠ Background scanning: DISABLED{Colors.RESET}\n")
 
 
