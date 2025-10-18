@@ -29,84 +29,11 @@ class Colors:
     BRIGHT_CYAN = '\033[96m'
     BRIGHT_MAGENTA = '\033[95m'
 
-class TerminalDisplay:
-    def __init__(self, verbose=False):
-        self.verbose = verbose
-    
-    @staticmethod
-    def _get_corner_box():
-        return {
-            'top_left': '╔', 'top_right': '╗',
-            'bottom_left': '╚', 'bottom_right': '╝',
-            'h_line': '═', 'v_line': '║'
-        }
-    
-    @staticmethod
-    def print_header(title):
-        box = TerminalDisplay._get_corner_box()
-        width = 80
-        bar = f"{Colors.CYAN}{box['top_left']}{box['h_line'] * (width - 2)}{box['top_right']}{Colors.RESET}"
-        
-        title_str = f" {title.upper()} "
-        padding = (width - len(title_str)) // 2
-        title_line = f"{Colors.MAGENTA}{box['v_line']}{Colors.RESET}{' ' * padding}{Colors.BRIGHT_MAGENTA}{Colors.BOLD}{title_str}{Colors.RESET}{' ' * (width - padding - len(title_str) - 1)}{Colors.MAGENTA}{box['v_line']}{Colors.RESET}"
-        
-        bottom_bar = f"{Colors.CYAN}{box['bottom_left']}{box['h_line'] * (width - 2)}{box['bottom_right']}{Colors.RESET}"
-        
-        print(f"\n{bar}")
-        print(title_line)
-        print(bottom_bar)
-    
-    def print_section(self, title):
-        if not self.verbose:
-            return
-        width = 60
-        box = TerminalDisplay._get_corner_box()
-        
-        bar = f"{Colors.GREEN}{box['top_left']}{box['h_line'] * (width - 2)}{box['top_right']}{Colors.RESET}"
-        title_line = f"{Colors.GREEN}{box['v_line']}{Colors.RESET} {Colors.BRIGHT_GREEN}{Colors.BOLD}{title}{Colors.RESET}{' ' * (width - len(title) - 4)}{Colors.GREEN}{box['v_line']}{Colors.RESET}"
-        bottom_bar = f"{Colors.GREEN}{box['bottom_left']}{box['h_line'] * (width - 2)}{box['bottom_right']}{Colors.RESET}"
-        
-        print(f"\n{bar}")
-        print(title_line)
-        print(bottom_bar)
-    
-    def print_info(self, label, value, indent=0):
-        if not self.verbose:
-            return
-        indent_str = " " * indent
-        print(f"{indent_str}{Colors.CYAN}➜{Colors.RESET} {Colors.BOLD}{label}:{Colors.RESET} {Colors.BRIGHT_CYAN}{value}{Colors.RESET}")
-    
-    def print_success(self, message):
-        if not self.verbose:
-            return
-        print(f" {Colors.BRIGHT_GREEN}[✓]{Colors.RESET} {Colors.GREEN}{message}{Colors.RESET}")
-    
-    def print_warning(self, message):
-        if not self.verbose:
-            return
-        print(f" {Colors.YELLOW}[!]{Colors.RESET} {Colors.YELLOW}{message}{Colors.RESET}")
-    
-    def print_error(self, message):
-        if not self.verbose:
-            return
-        print(f" {Colors.RED}[✗]{Colors.RESET} {Colors.RED}{message}{Colors.RESET}")
-    
-    def print_device(self, device, index, total):
-        if not self.verbose:
-            return
-        ip = device['ip'].ljust(15)
-        mac = device.get('mac', 'Unknown').ljust(17)
-        vendor = device.get('vendor', 'Unknown')
-        
-        idx_str = f"{index:2d}/{total:2d}".center(5)
-        print(f" {Colors.MAGENTA}[{idx_str}]{Colors.RESET} {Colors.CYAN}IP:{Colors.RESET} {Colors.BRIGHT_CYAN}{ip}{Colors.RESET} {Colors.GREEN}MAC:{Colors.RESET} {Colors.BRIGHT_GREEN}{mac}{Colors.RESET} {Colors.YELLOW}Vendor:{Colors.RESET} {Colors.BRIGHT_CYAN}{vendor}{Colors.RESET}")
-
 class DynamicNetworkDetector:
     def __init__(self, verbose=False):
         self.previous_network = None
         self.network_cache = {}
-        self.display = TerminalDisplay(verbose=verbose)
+        self.verbose = verbose
     
     def auto_detect_network(self):
         current_network = self._get_current_network_context()
@@ -138,15 +65,6 @@ class DynamicNetworkDetector:
             'estimated_size': self._estimate_network_size(),
             'discovery_time': datetime.now()
         }
-        
-        self.display.print_section("Network Configuration")
-        self.display.print_info("Network Range", network_info['network_range'])
-        self.display.print_info("Network Type", network_info['network_type'])
-        self.display.print_info("Interface", network_info['interface'])
-        self.display.print_info("Your IP", network_info['ip_address'])
-        self.display.print_info("Gateway", network_info['gateway'])
-        self.display.print_info("Estimated Size", f"{network_info['estimated_size']} devices")
-        self.display.print_info("Scan Methods", ", ".join(network_info['optimal_scan_methods']))
         
         return network_info
 
@@ -394,7 +312,6 @@ class DeviceScanner:
         self.scan_thread = None
         self.mac_vendors = self._load_mac_vendors()
         self.network_detector = DynamicNetworkDetector(verbose=verbose)
-        self.display = TerminalDisplay(verbose=verbose)
         self.verbose = verbose
         self.banner_shown = False
         self.show_banner = show_banner
@@ -403,6 +320,7 @@ class DeviceScanner:
             self._print_startup_banner()
 
     def _print_startup_banner(self):
+        """Clean, beautiful startup banner"""
         width = 80
         print(f"\n{Colors.CYAN}{'╔' + '═' * (width - 2) + '╗'}{Colors.RESET}")
         print(f"{Colors.CYAN}║{Colors.RESET}{' ' * (width - 2)}{Colors.CYAN}║{Colors.RESET}")
@@ -432,34 +350,26 @@ class DeviceScanner:
         self.banner_shown = True
 
     def smart_scan(self):
+        """Silent scanning - only prints scan completion"""
         network_info = self.network_detector.auto_detect_network()
         
         if network_info['interface'] == 'unknown':
-            if self.verbose:
-                self.display.print_error("No valid network interface detected!")
             return []
         
-        if not self.verbose:
-            print(f"{Colors.CYAN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Scanning network {network_info['network_range']}...", end='\r')
+        # Single line scanning indicator
+        print(f"{Colors.CYAN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Scanning network {network_info['network_range']}...", end='\r')
         
         devices = self._adaptive_scan(network_info)
         enriched_devices = self._add_network_context(devices, network_info)
         
-        if not self.verbose:
-            print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}✓ Scan completed - Found {len(enriched_devices)} devices{Colors.RESET}          ")
-        
-        if self.verbose and enriched_devices:
-            self.display.print_section("Discovered Devices")
-            for i, device in enumerate(enriched_devices, 1):
-                self.display.print_device(device, i, len(enriched_devices))
+        # Clean completion message
+        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}✓ Scan completed - Found {len(enriched_devices)} devices{Colors.RESET}          ")
         
         return enriched_devices
 
     def _adaptive_scan(self, network_info):
+        """Silent adaptive scanning"""
         all_devices = []
-        
-        self.display.print_section("Starting Network Scan")
-        self.display.print_info("Methods", ", ".join(network_info['optimal_scan_methods']))
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             future_to_method = {}
@@ -479,16 +389,11 @@ class DeviceScanner:
                 try:
                     devices = future.result(timeout=2)
                     if devices:
-                        self.display.print_success(f"{method_name}: found {len(devices)} devices")
                         for device in devices:
                             if not any(d['ip'] == device['ip'] for d in all_devices):
                                 all_devices.append(device)
-                    else:
-                        self.display.print_info(f"{method_name}", "no devices found")
-                except concurrent.futures.TimeoutError:
-                    self.display.print_warning(f"{method_name}: timed out")
-                except Exception as e:
-                    self.display.print_error(f"{method_name}: {str(e)[:50]}")
+                except:
+                    pass  # Silent failure
         
         return all_devices
 
@@ -510,13 +415,11 @@ class DeviceScanner:
         return self.mac_vendors.get(mac_prefix, 'Unknown')
 
     def arp_scan(self, target_ip):
+        """Silent ARP scanning"""
         try:
-            self.display.print_info("ARP Scan", f"scanning {target_ip}...")
-            
             try:
                 network = ipaddress.IPv4Network(target_ip)
                 if network.num_addresses > 1024:
-                    self.display.print_warning(f"Network too large ({network.num_addresses} hosts), limiting scope")
                     base = str(network.network_address).rsplit('.', 1)[0]
                     target_ip = f"{base}.0/24"
             except:
@@ -543,15 +446,11 @@ class DeviceScanner:
 
             return devices
 
-        except PermissionError:
-            self.display.print_error("ARP scan requires administrator/root privileges")
-            return []
-        except Exception as e:
-            self.display.print_error(f"ARP scan error: {str(e)[:50]}")
+        except:
             return []
 
     def ping_sweep(self, network_info):
-        self.display.print_info("Ping Sweep", f"scanning {network_info['network_range']}...")
+        """Silent ping sweep"""
         devices = []
         
         try:
@@ -577,25 +476,31 @@ class DeviceScanner:
                             'vendor': 'Unknown',
                             'discovery_method': 'ping_sweep'
                         })
-                except (subprocess.TimeoutExpired, Exception):
+                except:
                     continue
                     
-        except Exception as e:
-            self.display.print_error(f"Ping sweep error: {str(e)[:50]}")
+        except:
+            pass
         
         return devices
 
     def get_hostname(self, ip):
+        """Enhanced hostname resolution"""
         try:
-            hostname = socket.gethostbyaddr(ip)[0]
-            return hostname
+            from .hostname_resolver import hostname_resolver
+            return hostname_resolver.resolve_hostname(ip)
+        except ImportError:
+            try:
+                hostname = socket.gethostbyaddr(ip)[0]
+                return hostname.split('.')[0] if hostname else None
+            except:
+                return None
         except:
             return None
 
     def _add_network_context(self, devices, network_info):
+        """Silent device context enrichment and saving"""
         saved_count = 0
-        
-        self.display.print_section("Saving Devices to Database")
         
         for device in devices:
             try:
@@ -614,7 +519,6 @@ class DeviceScanner:
                     device['hostname'] = None
                 
                 if not device.get('ip') or device['ip'] == 'Unknown':
-                    self.display.print_warning(f"Skipping device: No valid IP")
                     continue
                 
                 mac = device.get('mac')
@@ -623,9 +527,7 @@ class DeviceScanner:
                         ip_parts = device['ip'].split('.')
                         mac = f"00:00:00:{int(ip_parts[-3]):02x}:{int(ip_parts[-2]):02x}:{int(ip_parts[-1]):02x}".upper()
                         device['mac'] = mac
-                        self.display.print_info(f"Generated MAC for {device['ip']}", mac)
-                    except (ValueError, IndexError) as e:
-                        self.display.print_warning(f"Could not generate MAC for {device['ip']}: {e}")
+                    except:
                         mac = "00:00:00:00:00:00"
                         device['mac'] = mac
                 
@@ -647,18 +549,13 @@ class DeviceScanner:
                             description=f"Device detected: {device['ip']} ({mac}) via {device.get('discovery_method', 'unknown')}",
                             device_id=device_id
                         )
-                        self.display.print_success(f"Saved: {device['ip']} (ID: {device_id})")
-                    else:
-                        self.display.print_warning(f"Failed to save: {device['ip']}")
                         
                 except Exception as db_error:
-                    self.display.print_error(f"DB Error for {device['ip']}: {db_error}")
+                    pass  # Silent DB errors
                     
             except Exception as e:
-                self.display.print_error(f"Error processing device: {e}")
                 continue
         
-        self.display.print_info("Database Save", f"Saved {saved_count}/{len(devices)} devices")
         return devices
 
     def _infer_location(self, network_info):
@@ -688,7 +585,7 @@ class DeviceScanner:
         self.scan_thread = threading.Thread(target=scan_loop, daemon=True)
         self.scan_thread.start()
         
-        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}✓ Continuous scanning started (interval: {interval}s){Colors.RESET}")
+        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}Continuous scanning started (interval: {interval}s){Colors.RESET}")
 
     def stop_scan(self):
         self.scanning = False

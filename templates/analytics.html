@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}{{ gettext('analytics') }}{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Network Health Score -->
+    <div class="cyber-card rounded-lg p-6">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-medium">{{ gettext('network_health') }}</h2>
+            <div class="text-right">
+                <div class="text-3xl font-bold" id="healthScore">0</div>
+                <div class="text-sm text-slate-400">{{ gettext('health_score') }}</div>
+            </div>
+        </div>
+        <div class="space-y-3">
+            <div class="flex justify-between">
+                <span class="text-slate-400">{{ gettext('online_devices') }}</span>
+                <span class="font-mono" id="onlineCount">0</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-slate-400">{{ gettext('trusted_devices') }}</span>
+                <span class="font-mono" id="trustedCount">0</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-slate-400">{{ gettext('active_alerts') }}</span>
+                <span class="font-mono" id="alertsCount">0</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-slate-400">{{ gettext('recent_activity') }}</span>
+                <span class="font-mono" id="activityCount">0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Device Status Distribution -->
+    <div class="cyber-card rounded-lg p-6">
+        <h2 class="text-lg font-medium mb-4">{{ gettext('device_status') }}</h2>
+        <div class="h-64">
+            <canvas id="statusChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Alert Trends -->
+    <div class="cyber-card rounded-lg p-6">
+        <h2 class="text-lg font-medium mb-4">{{ gettext('alert_trends') }}</h2>
+        <div class="h-64">
+            <canvas id="alertTrendsChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Device Vendor Distribution -->
+    <div class="cyber-card rounded-lg p-6">
+        <h2 class="text-lg font-medium mb-4">{{ gettext('vendor_distribution') }}</h2>
+        <div class="h-64">
+            <canvas id="vendorChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Hourly Alert Pattern -->
+    <div class="cyber-card rounded-lg p-6">
+        <h2 class="text-lg font-medium mb-4">{{ gettext('hourly_alerts') }}</h2>
+        <div class="h-64">
+            <canvas id="hourlyChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Risk Level Distribution -->
+    <div class="cyber-card rounded-lg p-6">
+        <h2 class="text-lg font-medium mb-4">{{ gettext('risk_levels') }}</h2>
+        <div class="h-64">
+            <canvas id="riskChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Device Trends Over Time -->
+    <div class="cyber-card rounded-lg p-6">
+        <h2 class="text-lg font-medium mb-4">{{ gettext('device_trends') }}</h2>
+        <div class="h-64">
+            <canvas id="deviceTrendsChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Alert Types Distribution -->
+<div class="cyber-card rounded-lg p-6 mt-6">
+    <h2 class="text-lg font-medium mb-4">{{ gettext('alert_types') }}</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="alertTypesList">
+        <!-- Alert types will be populated here -->
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/analytics.js') }}"></script>
+{% endblock %}
+

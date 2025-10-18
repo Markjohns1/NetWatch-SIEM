@@ -1,9 +1,12 @@
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for, flash
+from flask_socketio import SocketIO, emit
 from functools import wraps
 from database.models import Database
 from scanner.device_scanner import DeviceScanner
 from rules.alert_engine import AlertEngine
+from rules.smart_alert_engine import SmartAlertEngine
 from flask.signals import appcontext_pushed
+from i18n import I18nManager
 import threading
 import time
 from datetime import datetime
@@ -11,13 +14,24 @@ import os
 from datetime import datetime, timedelta
 from scanner.device_scanner import Colors
 import logging
-# Silence Flask's request logging
+
+# Silence Flask and SocketIO logging completely
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
+logging.getLogger('socketio').setLevel(logging.ERROR)
+logging.getLogger('engineio').setLevel(logging.ERROR)
 
 #app configuration
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'netwatch-siem-secret-key-2024')
+app.logger.setLevel(logging.ERROR)  # Silence Flask app logger too
+
+# Initialize SocketIO for real-time updates
+socketio = SocketIO(app, cors_allowed_origins="*", logger=False, engineio_logger=False)
+
+# Initialize internationalization
+i18n = I18nManager()
+i18n.init_app(app)
 
 # Use environment variables for credentials with fallback to defaults
 VALID_USERNAME = os.environ.get('ADMIN_USERNAME', 'Mark')
@@ -41,6 +55,7 @@ db.set_config('scanning_active', True)
 print(f"{Colors.CYAN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Auto-enabling network scanner...")
 
 scanner = DeviceScanner(db, verbose=False, show_banner=True)
+smart_alert_engine = SmartAlertEngine(db)
 alert_engine = AlertEngine(db)
 
 # Get initial config from database
@@ -60,6 +75,7 @@ def _scanner_loop(app):
     """
     with app.app_context():
         global SCAN_INTERVAL
+        previous_devices = set()  # Track previous scan results
         
         # Loop while scanning is enabled in database
         while True:
@@ -69,7 +85,6 @@ def _scanner_loop(app):
                 current_scanning_active = True  # Default if not set
                 
             if not current_scanning_active:
-                app.logger.info("Scanner stopped by configuration")
                 break  # Exit thread if scanning disabled
             
             try:
@@ -79,26 +94,90 @@ def _scanner_loop(app):
                 
                 # Scan network devices (silently)
                 devices = scanner.scan_network()
-                app.logger.info(f"Scanner found {len(devices)} devices at {datetime.now()}")
 
+                # Get current device statuses for comparison
+                current_devices = set()
+                device_status_changes = []
+                
                 # Process alerts for each detected device
                 for device_dict in devices:
                     conn = db.get_connection()
                     cursor = conn.cursor()
-                    cursor.execute('SELECT id FROM devices WHERE mac_address = ?', (device_dict['mac'],))
+                    cursor.execute('SELECT id, status FROM devices WHERE mac_address = ?', (device_dict['mac'],))
                     result = cursor.fetchone()
 
                     if result:
-                        device_id = result[0]
-                        alert_engine.process_device_alerts(device_id)
+                        device_id, old_status = result
+                        current_devices.add(device_id)
+                        
+                        # Check if device came online
+                        if old_status == 'offline':
+                            device_status_changes.append({
+                                'device_id': device_id,
+                                'ip': device_dict['ip'],
+                                'mac': device_dict['mac'],
+                                'status': 'online',
+                                'change': 'came_online'
+                            })
+                            print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}[ONLINE]{Colors.RESET} {device_dict['ip']} ({device_dict['mac']})")
+                        
+                        smart_alert_engine.process_smart_alerts(device_id)
+                    else:
+                        # New device detected
+                        current_devices.add(device_dict.get('id', 0))
+                        device_status_changes.append({
+                            'device_id': device_dict.get('id', 0),
+                            'ip': device_dict['ip'],
+                            'mac': device_dict['mac'],
+                            'status': 'online',
+                            'change': 'new_device'
+                        })
+                        print(f"{Colors.CYAN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_CYAN}[NEW]{Colors.RESET} {device_dict['ip']} ({device_dict['mac']}) - {device_dict.get('vendor', 'Unknown')}")
 
                     conn.close()
 
-                # Run periodic rule checks
-                alert_engine.run_periodic_checks()
+                # Check for devices that went offline
+                offline_devices = previous_devices - current_devices
+                for device_id in offline_devices:
+                    conn = db.get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute('SELECT ip_address, mac_address FROM devices WHERE id = ?', (device_id,))
+                    result = cursor.fetchone()
+                    if result:
+                        ip, mac = result
+                        device_status_changes.append({
+                            'device_id': device_id,
+                            'ip': ip,
+                            'mac': mac,
+                            'status': 'offline',
+                            'change': 'went_offline'
+                        })
+                        print(f"{Colors.RED}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.RED}[OFFLINE]{Colors.RESET} {ip} ({mac})")
+                    conn.close()
+
+                # Emit real-time updates via WebSocket
+                if device_status_changes:
+                    socketio.emit('device_status_update', {
+                        'changes': device_status_changes,
+                        'timestamp': datetime.now().isoformat(),
+                        'total_devices': len(current_devices)
+                    })
+                
+                # Emit dashboard stats update
+                stats = db.get_dashboard_stats()
+                socketio.emit('dashboard_stats_update', {
+                    'stats': stats,
+                    'timestamp': datetime.now().isoformat()
+                })
+
+                # Update previous devices set
+                previous_devices = current_devices
+
+                # Run periodic rule checks with smart engine
+                smart_alert_engine.run_smart_periodic_checks()
 
             except Exception as e:
-                app.logger.exception(f"Scanner error: {e}")
+                print(f"{Colors.RED}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.RED}[ERROR]{Colors.RESET} Scanner error: {e}")
 
             time.sleep(SCAN_INTERVAL)
 
@@ -127,10 +206,10 @@ def start_background_scanner():
         scanner_thread = threading.Thread(target=_scanner_loop, args=(app,), daemon=True)
         scanner_thread.start()
         _scanner_started = True
-        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}✓ Background network scanning: ACTIVE{Colors.RESET}\n")
+        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}✓ Background scanning: ACTIVE{Colors.RESET}\n")
     else:
         _scanner_started = True  # Mark as attempted to prevent spam
-        print(f"{Colors.YELLOW}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.YELLOW}>>> Background network scanning: DISABLED{Colors.RESET}\n")
+        print(f"{Colors.YELLOW}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.YELLOW}⚠ Background scanning: DISABLED{Colors.RESET}\n")
 
 
 def _on_appcontext_pushed(sender, **extra):
@@ -346,7 +425,7 @@ def scan_now():
             
             if result:
                 device_id = result[0]
-                alert_engine.process_device_alerts(device_id)
+                smart_alert_engine.process_smart_alerts(device_id)
             
             conn.close()
         
@@ -386,6 +465,208 @@ def get_activity_timeline():
         
         # If no data, return empty array (chart will show empty but won't error)
         return jsonify({'success': True, 'data': timeline_data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/analytics/device-trends')
+@login_required
+def get_device_trends():
+    """Get device trends over time"""
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        # Device count over last 7 days
+        cursor.execute('''
+            SELECT 
+                DATE(first_seen) as date,
+                COUNT(*) as new_devices
+            FROM devices
+            WHERE datetime(first_seen) >= datetime('now', '-7 days')
+            GROUP BY DATE(first_seen)
+            ORDER BY date ASC
+        ''')
+        
+        device_trends = [{'date': row[0], 'count': row[1]} for row in cursor.fetchall()]
+        
+        # Device status distribution
+        cursor.execute('''
+            SELECT status, COUNT(*) as count
+            FROM devices
+            GROUP BY status
+        ''')
+        
+        status_distribution = [{'status': row[0], 'count': row[1]} for row in cursor.fetchall()]
+        
+        # Vendor distribution
+        cursor.execute('''
+            SELECT vendor, COUNT(*) as count
+            FROM devices
+            WHERE vendor != 'Unknown'
+            GROUP BY vendor
+            ORDER BY count DESC
+            LIMIT 10
+        ''')
+        
+        vendor_distribution = [{'vendor': row[0], 'count': row[1]} for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'device_trends': device_trends,
+                'status_distribution': status_distribution,
+                'vendor_distribution': vendor_distribution
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/analytics/alert-trends')
+@login_required
+def get_alert_trends():
+    """Get alert trends and patterns"""
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        # Alert count over last 7 days
+        cursor.execute('''
+            SELECT 
+                DATE(timestamp) as date,
+                COUNT(*) as total_alerts,
+                COUNT(CASE WHEN severity = 'high' THEN 1 END) as high_alerts,
+                COUNT(CASE WHEN severity = 'medium' THEN 1 END) as medium_alerts,
+                COUNT(CASE WHEN severity = 'low' THEN 1 END) as low_alerts
+            FROM alerts
+            WHERE datetime(timestamp) >= datetime('now', '-7 days')
+            GROUP BY DATE(timestamp)
+            ORDER BY date ASC
+        ''')
+        
+        alert_trends = []
+        for row in cursor.fetchall():
+            alert_trends.append({
+                'date': row[0],
+                'total': row[1],
+                'high': row[2],
+                'medium': row[3],
+                'low': row[4]
+            })
+        
+        # Alert types distribution
+        cursor.execute('''
+            SELECT alert_type, COUNT(*) as count
+            FROM alerts
+            WHERE datetime(timestamp) >= datetime('now', '-7 days')
+            GROUP BY alert_type
+            ORDER BY count DESC
+        ''')
+        
+        alert_types = [{'type': row[0], 'count': row[1]} for row in cursor.fetchall()]
+        
+        # Hourly alert distribution
+        cursor.execute('''
+            SELECT 
+                strftime('%H', timestamp) as hour,
+                COUNT(*) as count
+            FROM alerts
+            WHERE datetime(timestamp) >= datetime('now', '-7 days')
+            GROUP BY strftime('%H', timestamp)
+            ORDER BY hour ASC
+        ''')
+        
+        hourly_alerts = [{'hour': int(row[0]), 'count': row[1]} for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'alert_trends': alert_trends,
+                'alert_types': alert_types,
+                'hourly_alerts': hourly_alerts
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/analytics/network-health')
+@login_required
+def get_network_health():
+    """Get network health metrics"""
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        # Basic network stats
+        cursor.execute("SELECT COUNT(*) FROM devices")
+        total_devices = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM devices WHERE status = 'online'")
+        online_devices = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM devices WHERE is_trusted = 1")
+        trusted_devices = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM alerts WHERE status = 'active'")
+        active_alerts = cursor.fetchone()[0]
+        
+        # Calculate health score
+        if total_devices > 0:
+            online_ratio = online_devices / total_devices
+            trusted_ratio = trusted_devices / total_devices
+            alert_ratio = min(active_alerts / total_devices, 1.0)
+            
+            health_score = (
+                online_ratio * 40 +  # 40% weight for online devices
+                trusted_ratio * 30 +  # 30% weight for trusted devices
+                (1 - alert_ratio) * 30  # 30% weight for low alert ratio
+            ) * 100
+        else:
+            health_score = 100
+        
+        # Device risk levels
+        cursor.execute('''
+            SELECT 
+                CASE 
+                    WHEN reconnect_count > 20 THEN 'high'
+                    WHEN reconnect_count > 10 THEN 'medium'
+                    WHEN reconnect_count > 5 THEN 'low'
+                    ELSE 'minimal'
+                END as risk_level,
+                COUNT(*) as count
+            FROM devices
+            GROUP BY risk_level
+        ''')
+        
+        risk_levels = [{'level': row[0], 'count': row[1]} for row in cursor.fetchall()]
+        
+        # Recent activity (last 24 hours)
+        cursor.execute('''
+            SELECT COUNT(*) FROM events
+            WHERE datetime(timestamp) >= datetime('now', '-24 hours')
+        ''')
+        recent_activity = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'total_devices': total_devices,
+                'online_devices': online_devices,
+                'trusted_devices': trusted_devices,
+                'active_alerts': active_alerts,
+                'health_score': round(health_score, 1),
+                'risk_levels': risk_levels,
+                'recent_activity': recent_activity
+            }
+        })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -509,6 +790,44 @@ def get_timezone_info():
     })
 
 
+@app.route('/api/language/set', methods=['POST'])
+@login_required
+def set_language():
+    try:
+        data = request.json
+        language = data.get('language', 'en')
+        
+        if i18n.set_language(language):
+            return jsonify({
+                'success': True,
+                'message': 'Language updated successfully',
+                'current_language': language
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid language code'
+            }), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/language/current')
+@login_required
+def get_current_language():
+    try:
+        current_lang = i18n.get_current_language()
+        available_langs = i18n.get_available_languages()
+        
+        return jsonify({
+            'success': True,
+            'current_language': current_lang,
+            'available_languages': available_langs
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/config/save', methods=['POST'])
 @login_required
 def save_config():
@@ -523,7 +842,6 @@ def save_config():
                 scan_interval = new_interval
                 SCAN_INTERVAL = new_interval
                 db.set_config('scan_interval', new_interval)
-                print(f"Scan interval updated to {new_interval} seconds")
         
         # Update scanning_active if provided
         if 'scanning_active' in data:
@@ -603,9 +921,6 @@ def start_scanning():
             scanner_thread = threading.Thread(target=_scanner_loop, args=(app,), daemon=True)
             scanner_thread.start()
             _scanner_started = True
-            app.logger.info("Scanner thread started via API")
-        else:
-            app.logger.info("Scanner thread already running")
             
         db.add_event(
             event_type='scan_started',
@@ -621,6 +936,12 @@ def start_scanning():
 @login_required
 def rules_page():
     return render_template('rules.html')
+
+
+@app.route('/analytics')
+@login_required
+def analytics_page():
+    return render_template('analytics.html')
 
 
 @app.route('/api/rules', methods=['GET'])
@@ -650,6 +971,13 @@ def add_rule():
         
         if not name or not condition:
             return jsonify({'success': False, 'error': 'Name and condition required'}), 400
+        
+        # Use smart validation
+        validation_errors = smart_alert_engine.add_rule_validation({
+            'name': name, 'condition': condition, 'threshold': threshold, 'severity': severity
+        })
+        if validation_errors:
+            return jsonify({'success': False, 'error': '; '.join(validation_errors)}), 400
         
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -720,7 +1048,66 @@ def toggle_rule(rule_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/rules/test', methods=['POST'])
+@login_required
+def test_rule():
+    """Test a rule against a specific device"""
+    try:
+        data = request.json
+        rule_data = {
+            'name': data.get('name'),
+            'condition': data.get('condition'),
+            'threshold': data.get('threshold', 1),
+            'severity': data.get('severity', 'medium')
+        }
+        test_device_id = data.get('device_id')
+        
+        if not test_device_id:
+            return jsonify({'success': False, 'error': 'Device ID required'}), 400
+        
+        result = smart_alert_engine.test_rule(rule_data, test_device_id)
+        return jsonify({'success': True, 'result': result})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# WebSocket Event Handlers - Silent mode
+@socketio.on('connect')
+def handle_connect():
+    """Handle client connection - silent"""
+    emit('connected', {'message': 'Connected to NetWatch SIEM'})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnection - silent"""
+    pass
+
+@socketio.on('request_dashboard_stats')
+def handle_dashboard_stats_request():
+    """Handle dashboard stats request"""
+    try:
+        stats = db.get_dashboard_stats()
+        emit('dashboard_stats_update', {
+            'stats': stats,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        emit('error', {'message': f'Error fetching dashboard stats: {str(e)}'})
+
+@socketio.on('request_device_list')
+def handle_device_list_request():
+    """Handle device list request"""
+    try:
+        devices = db.get_all_devices()
+        emit('device_list_update', {
+            'devices': devices,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        emit('error', {'message': f'Error fetching device list: {str(e)}'})
+
 # MAIN ENTRY POINT
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=False)

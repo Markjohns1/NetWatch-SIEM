@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard{% endblock %}
+{% block title %}{{ gettext('dashboard') }}{% endblock %}
 
 {% block content %}
 <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -9,7 +9,7 @@
             <i data-feather="globe" class="text-blue-400"></i>
         </div>
         <div>
-            <p class="text-xs text-slate-400">Network Devices</p>
+            <p class="text-xs text-slate-400">{{ gettext('network_devices') }}</p>
             <p class="text-xl font-mono" id="totalDevices">0</p>
         </div>
     </div>
@@ -18,7 +18,7 @@
             <i data-feather="wifi" class="text-emerald-400"></i>
         </div>
         <div>
-            <p class="text-xs text-slate-400">Active Now</p>
+            <p class="text-xs text-slate-400">{{ gettext('active_devices') }}</p>
             <p class="text-xl font-mono" id="activeDevices">0</p>
         </div>
     </div>
@@ -27,7 +27,7 @@
             <i data-feather="alert-circle" class="text-amber-400"></i>
         </div>
         <div>
-            <p class="text-xs text-slate-400">Critical Alerts</p>
+            <p class="text-xs text-slate-400">{{ gettext('critical_alerts') }}</p>
             <p class="text-xl font-mono" id="criticalAlerts">0</p>
         </div>
     </div>
@@ -36,7 +36,7 @@
             <i data-feather="shield" class="text-violet-400"></i>
         </div>
         <div>
-            <p class="text-xs text-slate-400">Trusted</p>
+            <p class="text-xs text-slate-400">{{ gettext('trusted_devices') }}</p>
             <p class="text-xl font-mono" id="trustedDevices">0</p>
         </div>
     </div>
@@ -44,28 +44,70 @@
 
 <div class="cyber-card rounded-lg p-4 network-graph">
     <div class="flex justify-between items-center mb-4">
-        <h2 class="text-lg font-medium">Network Activity (24h)</h2>
+        <h2 class="text-lg font-medium">{{ gettext('network_activity') }}</h2>
+        <a href="/analytics" class="text-blue-400 hover:text-blue-300 text-sm">
+            {{ gettext('view_analytics') }} →
+        </a>
     </div>
     <div class="h-64 bg-slate-900/50 rounded-lg border border-slate-800">
         <canvas id="networkChart"></canvas>
     </div>
 </div>
 
-<div class="cyber-card rounded-lg p-4">
-    <div class="flex justify-between items-center mb-4">
-        <h2 class="text-lg font-medium">Recent Alerts</h2>
+<!-- Quick Analytics Cards -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="cyber-card rounded-lg p-4">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-xs text-slate-400">{{ gettext('network_health') }}</p>
+                <p class="text-2xl font-bold text-emerald-400" id="quickHealthScore">0</p>
+            </div>
+            <div class="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                <i data-feather="activity" class="text-emerald-400"></i>
+            </div>
+        </div>
     </div>
-    <div id="alertsList" class="space-y-2">
-        <p class="text-slate-400 text-sm">No alerts</p>
+    
+    <div class="cyber-card rounded-lg p-4">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-xs text-slate-400">{{ gettext('top_vendor') }}</p>
+                <p class="text-lg font-medium text-blue-400" id="topVendor">Unknown</p>
+            </div>
+            <div class="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
+                <i data-feather="cpu" class="text-blue-400"></i>
+            </div>
+        </div>
+    </div>
+    
+    <div class="cyber-card rounded-lg p-4">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-xs text-slate-400">{{ gettext('alert_rate') }}</p>
+                <p class="text-lg font-medium text-amber-400" id="alertRate">0/h</p>
+            </div>
+            <div class="w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center">
+                <i data-feather="trending-up" class="text-amber-400"></i>
+            </div>
+        </div>
     </div>
 </div>
 
 <div class="cyber-card rounded-lg p-4">
     <div class="flex justify-between items-center mb-4">
-        <h2 class="text-lg font-medium">Active Devices</h2>
+        <h2 class="text-lg font-medium">{{ gettext('recent_alerts') }}</h2>
+    </div>
+    <div id="alertsList" class="space-y-2">
+        <p class="text-slate-400 text-sm">{{ gettext('no_alerts') }}</p>
+    </div>
+</div>
+
+<div class="cyber-card rounded-lg p-4">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-medium">{{ gettext('active_devices_list') }}</h2>
     </div>
     <div id="devicesList" class="space-y-2">
-        <p class="text-slate-400 text-sm">No devices detected</p>
+        <p class="text-slate-400 text-sm">{{ gettext('no_devices') }}</p>
     </div>
 </div>
 {% endblock %}

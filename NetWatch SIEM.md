@@ -11,9 +11,13 @@ NetWatch SIEM is a Flask-based network security monitoring system designed for c
 Key Capabilities
 
 • Real-time Device Discovery - Automatic detection and tracking of network devices using ARP scanning
+• Smart Alert Engine - Advanced rule processing with false positive elimination and context-aware evaluation
 • Intelligent Alerting - Rule-based security alerts with configurable thresholds and severity levels
 • Event Logging - Comprehensive activity monitoring with timezone-aware timestamps
 • Trust Management - Device classification system to reduce alert noise
+• Analytics Dashboard - Real-time network health metrics, device trends, and alert patterns
+• International Support - Multi-language interface (English, Spanish, French, German, Chinese)
+• Rule Testing - Live rule validation against real devices before deployment
 • RESTful API - Complete programmatic access to all system functions
 • Offline Operation - Fully functional without internet connectivity
 
@@ -29,7 +33,9 @@ Backend Framework    : Flask (Python 3.11)
 Database            : SQLite 3 (netwatch.db)
 Frontend            : HTML5, Vanilla JavaScript, Tailwind CSS
 Network Scanning    : Scapy (requires elevated privileges)
-Architecture        : Service-oriented modular design
+Analytics Engine    : Chart.js for data visualization
+Internationalization: Custom i18n system with JSON translations
+Architecture        : Service-oriented modular design with smart alert processing
 
 
 System Requirements
@@ -98,10 +104,14 @@ Device Scanner (scanner/device_scanner.py)
     Network discovery engine featuring ARP scanning, ping sweep fallback, MAC vendor
     identification, and background daemon thread operation with configurable intervals.
 
-Alert Engine (rules/alert_engine.py)
-    Security monitoring system that processes events against rule database, evaluates
-    dynamic conditions and thresholds, generates severity-classified alerts, and
-    prevents duplicate alert generation.
+Smart Alert Engine (rules/smart_alert_engine.py)
+    Advanced security monitoring system with intelligent rule processing, false positive
+    elimination, context-aware evaluation, risk scoring, and alert deduplication.
+    Features whitelist-aware processing and learning-based decision making.
+
+Legacy Alert Engine (rules/alert_engine.py)
+    Original security monitoring system maintained for backward compatibility.
+    Processes events against rule database with basic duplicate prevention.
 
 Database Layer (database/models.py)
     SQLite wrapper providing Kenya timezone support (EAT, UTC+3), dictionary-style
@@ -110,12 +120,14 @@ Database Layer (database/models.py)
 
 Frontend Components
 
-Dashboard          : Real-time statistics, network overview, and activity timeline
-Device Management  : Device listing, search, trust management, and naming
+Dashboard          : Real-time statistics, network overview, activity timeline, and quick analytics
+Analytics Dashboard: Advanced network health metrics, device trends, alert patterns, and vendor distribution
+Device Management  : Device listing, search, trust management, and naming with persistence
 Alerts Panel       : Alert monitoring, resolution, and false positive marking
 Event Logs         : Comprehensive event history with filtering capabilities
 Configuration      : System settings and scan interval management
-Rules Manager      : Custom alert rule creation and management
+Rules Manager      : Smart rule creation, testing, validation, and management
+Language Selector  : Multi-language interface with real-time switching
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -241,6 +253,60 @@ Reduce alert fatigue by marking known devices as trusted:
 • Trust status persists across scans
 • Bulk trust operations supported
 • Visual trust indicators in device listings
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Smart Alert Engine
+------------------
+
+Advanced Rule Processing
+
+The Smart Alert Engine provides enterprise-grade rule processing with intelligent
+false positive elimination and context-aware evaluation.
+
+Key Features:
+
+• Whitelist-Aware Processing - Trusted devices excluded from unnecessary alerts
+• Alert Deduplication - Hash-based duplicate prevention with cooldown periods
+• Risk Scoring - Dynamic severity calculation based on device trust and history
+• Learning Data - Historical patterns for smarter decision making
+• Rule Testing - Live validation against real devices before deployment
+• Smart Validation - Prevents duplicate rule names and validates thresholds
+• Performance Optimization - Caching and efficient rule ordering
+
+False Positive Elimination:
+
+• Trusted devices automatically whitelisted from new device alerts
+• Smart thresholds prevent normal device behavior from triggering alerts
+• Context-aware evaluation considers device history and patterns
+• Alert cooldown periods prevent spam from repeated conditions
+• Learning-based risk scoring reduces false positives over time
+
+Rule Testing System:
+
+• Test rules against real devices before adding
+• Live feedback on whether rules would trigger
+• Device context information for informed decisions
+• Validation prevents bad rules from being deployed
+• Dynamic help text guides appropriate threshold selection
+
+Enhanced Rule Types:
+
+• New Device Detection - Only alerts on truly new devices (1 hour window)
+• Reconnect Count - Smart thresholds (20+ for untrusted devices)
+• Inactive Duration - 24+ hours offline (not 2 hours)
+• MAC Patterns - Enhanced spoofing detection with multiple patterns
+• Vendor Unknown - Only for untrusted devices
+• IP Changes - Tracks suspicious IP address changes
+
+Performance Features:
+
+• Alert caching prevents duplicate alerts within cooldown periods
+• Rule ordering processes high-severity rules first
+• Learning data provides historical context for decisions
+• Smart cooldowns prevent alert spam
+• Efficient database queries with proper indexing
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -416,6 +482,45 @@ GET /api/timezone/info
     Returns timezone information (Africa/Nairobi, UTC+3).
 
 
+Analytics & Reporting
+
+GET /api/analytics/device-trends
+    Returns device trends, status distribution, and vendor distribution.
+
+GET /api/analytics/alert-trends
+    Returns alert trends, types, and hourly distribution patterns.
+
+GET /api/analytics/network-health
+    Returns network health metrics with calculated health score and risk levels.
+
+
+Internationalization
+
+POST /api/language/set
+    Sets user language preference in session.
+    
+    Request Body:
+        {"language": "en"}
+
+GET /api/language/current
+    Returns current language and available languages.
+
+
+Rule Testing
+
+POST /api/rules/test
+    Tests a rule against a specific device before adding.
+    
+    Request Body:
+        {
+            "name": "test_rule",
+            "condition": "reconnect_count",
+            "threshold": 10,
+            "severity": "medium",
+            "device_id": 1
+        }
+
+
 Response Format
 
 All API endpoints return JSON with the following structure:
@@ -578,28 +683,41 @@ netwatch-siem/
 │   └── models.py                   Database wrapper and models
 │
 ├── scanner/
-│   └── device_scanner.py           Network scanning engine
+│   ├── device_scanner.py           Network scanning engine
+│   └── enhanced_scanner.py         Enhanced scanner with persistence
 │
 ├── rules/
-│   └── alert_engine.py             Alert processing engine
+│   ├── alert_engine.py             Legacy alert processing engine
+│   └── smart_alert_engine.py       Smart alert engine with false positive elimination
+│
+├── i18n/
+│   ├── __init__.py                 Internationalization manager
+│   └── translations/
+│       ├── en.json                 English translations
+│       ├── es.json                 Spanish translations
+│       ├── fr.json                 French translations
+│       ├── de.json                 German translations
+│       └── zh.json                 Chinese translations
 │
 ├── templates/
-│   ├── base.html                   Base template
+│   ├── base.html                   Base template with i18n support
 │   ├── login.html                  Login page
-│   ├── dashboard.html              Dashboard view
+│   ├── dashboard.html              Dashboard view with quick analytics
+│   ├── analytics.html              Advanced analytics dashboard
 │   ├── devices.html                Device management
 │   ├── alerts.html                 Alerts panel
 │   ├── logs.html                   Event logs
 │   ├── config.html                 System configuration
-│   └── rules.html                  Rules management
+│   └── rules.html                  Smart rules management with testing
 │
 └── static/
     ├── css/
     │   ├── main.css                Main stylesheet
-    │   └── cyber-theme.css         Dark cyber theme
+    │   └── cyber-theme.css         Dark cyber theme with animations
     │
     └── js/
-        ├── dashboard.js            Dashboard logic
+        ├── dashboard.js            Dashboard logic with analytics
+        ├── analytics.js            Analytics dashboard functionality
         ├── devices.js              Device management
         └── alerts.js               Alerts handling
 
@@ -820,6 +938,71 @@ For issues, questions, or contributions:
 Changelog
 ---------
 
+Version 2.0 (October 18, 2025) - MAJOR ENHANCEMENT RELEASE
+
+Smart Alert Engine
+    ✓ Advanced rule processing with false positive elimination
+    ✓ Context-aware evaluation with risk scoring
+    ✓ Alert deduplication with hash-based prevention
+    ✓ Whitelist-aware processing for trusted devices
+    ✓ Learning-based decision making with historical patterns
+    ✓ Rule testing system with live device validation
+    ✓ Smart validation preventing duplicate rules and bad thresholds
+    ✓ Performance optimization with caching and efficient ordering
+
+Analytics Dashboard
+    ✓ Real-time network health metrics with calculated scores
+    ✓ Device trends and status distribution analysis
+    ✓ Alert patterns and hourly distribution charts
+    ✓ Vendor distribution and top device analysis
+    ✓ Risk level categorization and assessment
+    ✓ Interactive charts with Chart.js integration
+    ✓ Quick analytics cards on main dashboard
+
+Internationalization
+    ✓ Multi-language support (English, Spanish, French, German, Chinese)
+    ✓ Real-time language switching without page reload
+    ✓ Session-based language persistence
+    ✓ Complete UI translation coverage
+    ✓ Dynamic language selector in header
+
+Device Persistence
+    ✓ Enhanced device name and trust status persistence
+    ✓ Multiple lookup strategies for device identification
+    ✓ Smart updates preserving user customizations
+    ✓ MAC-first and IP fallback detection methods
+    ✓ No more lost device names when devices go offline/online
+
+Enhanced Rules System
+    ✓ Live rule testing against real devices
+    ✓ Dynamic threshold guidance with context-aware help
+    ✓ Smart validation preventing bad rule creation
+    ✓ Enhanced rule types with improved thresholds
+    ✓ Test button for rule validation before deployment
+    ✓ Real-time feedback on rule behavior
+
+User Interface Improvements
+    ✓ Analytics dashboard with comprehensive metrics
+    ✓ Quick analytics cards on main dashboard
+    ✓ Enhanced rules page with testing capabilities
+    ✓ Language selector with real-time switching
+    ✓ Improved device management with persistence
+    ✓ Better visual feedback and user guidance
+
+API Enhancements
+    ✓ Analytics endpoints for comprehensive reporting
+    ✓ Rule testing API for live validation
+    ✓ Language management endpoints
+    ✓ Enhanced device persistence endpoints
+    ✓ Improved error handling and validation
+
+Performance Optimizations
+    ✓ Smart alert caching preventing duplicate processing
+    ✓ Efficient rule ordering and processing
+    ✓ Learning data integration for smarter decisions
+    ✓ Optimized database queries with proper indexing
+    ✓ Background processing improvements
+
 Version 1.0 (October 17, 2025)
 
 Core Features
@@ -862,8 +1045,11 @@ Bug Fixes
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Documentation Version: 1.0
+Documentation Version: 2.0
 Last Updated: October 18, 2025
-NetWatch SIEM - Network Security Monitoring System
+NetWatch SIEM - Advanced Network Security Monitoring System
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+

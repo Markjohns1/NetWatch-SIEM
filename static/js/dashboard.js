@@ -181,11 +181,59 @@ function formatTime(timestamp) {
     return time.toLocaleDateString();
 }
 
+// Load quick analytics data
+async function updateQuickAnalytics() {
+    try {
+        // Load network health
+        const healthResponse = await fetch('/api/analytics/network-health');
+        const healthData = await healthResponse.json();
+        
+        if (healthData.success) {
+            const healthScore = healthData.data.health_score;
+            document.getElementById('quickHealthScore').textContent = healthScore;
+            
+            // Update color based on health score
+            const healthElement = document.getElementById('quickHealthScore');
+            if (healthScore >= 80) {
+                healthElement.className = 'text-2xl font-bold text-emerald-400';
+            } else if (healthScore >= 60) {
+                healthElement.className = 'text-2xl font-bold text-yellow-400';
+            } else {
+                healthElement.className = 'text-2xl font-bold text-red-400';
+            }
+        }
+        
+        // Load device trends for top vendor
+        const trendsResponse = await fetch('/api/analytics/device-trends');
+        const trendsData = await trendsResponse.json();
+        
+        if (trendsData.success && trendsData.data.vendor_distribution.length > 0) {
+            const topVendor = trendsData.data.vendor_distribution[0];
+            document.getElementById('topVendor').textContent = topVendor.vendor;
+        }
+        
+        // Load alert trends for alert rate
+        const alertResponse = await fetch('/api/analytics/alert-trends');
+        const alertData = await alertResponse.json();
+        
+        if (alertData.success && alertData.data.alert_trends.length > 0) {
+            const recentAlerts = alertData.data.alert_trends.slice(-7); // Last 7 days
+            const totalAlerts = recentAlerts.reduce((sum, day) => sum + day.total, 0);
+            const alertRate = Math.round(totalAlerts / 7); // Average per day
+            document.getElementById('alertRate').textContent = `${alertRate}/d`;
+        }
+        
+    } catch (error) {
+        console.error('Error loading quick analytics:', error);
+    }
+}
+
 function updatePageData() {
     updateDashboardStats();
     updateRecentAlerts();
     updateActiveDevices();
     updateActivityChart();
+    updateQuickAnalytics();
 }
 
 window.updatePageData = updatePageData;
@@ -193,11 +241,11 @@ window.updatePageData = updatePageData;
 // Initial load
 updatePageData();
 
-
 setInterval(() => {
     updateDashboardStats();
     updateRecentAlerts();
     updateActiveDevices();
+    updateQuickAnalytics();
 }, 3000);
 
 setInterval(() => {
