@@ -1,5 +1,5 @@
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for, flash
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, disconnect
 from functools import wraps
 from database.models import Database
 from scanner.device_scanner import DeviceScanner
@@ -9,13 +9,11 @@ from flask.signals import appcontext_pushed
 from i18n import I18nManager
 import threading
 import time
-from datetime import datetime
-import os
 from datetime import datetime, timedelta
+import os
 from scanner.device_scanner import Colors
 import logging
 
-# Silence Flask and SocketIO logging completely
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 logging.getLogger('socketio').setLevel(logging.ERROR)
@@ -25,7 +23,6 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'netwatch-siem-secret-key-2024')
 app.logger.setLevel(logging.ERROR)
 
-# FIXED SocketIO configuration
 socketio = SocketIO(
     app, 
     cors_allowed_origins="*", 
@@ -34,20 +31,18 @@ socketio = SocketIO(
     async_mode='threading',
     ping_timeout=60,
     ping_interval=25,
-    max_http_buffer_size=10000000,  # 10MB buffer
+    max_http_buffer_size=10000000,
     allow_upgrades=True,
-    transports=['websocket', 'polling']
+    transports=['websocket', 'polling'],
+    engineio_logger_level='ERROR'
 )
 
-# Helper function to safely emit SocketIO events
 def safe_emit(event, data, **kwargs):
-    """Safely emit SocketIO events, catching disconnection errors"""
     try:
         socketio.emit(event, data, **kwargs)
-    except Exception:
+    except Exception as e:
         pass
 
-# Track connected clients
 active_clients = set()
 
 i18n = I18nManager()
@@ -141,7 +136,6 @@ def _scanner_loop(app):
 
                     conn.close()
 
-                # Mark devices offline in database
                 offline_devices = previous_devices - current_devices
                 for device_id in offline_devices:
                     conn = db.get_connection()
@@ -163,7 +157,6 @@ def _scanner_loop(app):
                         print(f"{Colors.RED}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.RED}[OFFLINE]{Colors.RESET} {ip} ({mac})")
                     conn.close()
 
-                # Use safe_emit to handle disconnected sessions
                 if device_status_changes:
                     safe_emit('device_status_update', {
                         'changes': device_status_changes,
@@ -743,8 +736,7 @@ def delete_events():
 @app.route('/api/timezone/info')
 @login_required
 def get_timezone_info():
-    from datetime import datetime, timezone, timedelta
-    kenya_tz = timezone(timedelta(hours=3))
+    kenya_tz = datetime.timezone(timedelta(hours=3))
     kenya_time = datetime.now(kenya_tz)
     
     return jsonify({
@@ -1024,42 +1016,49 @@ def test_rule():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# SocketIO Event Handlers
 @socketio.on('connect')
 def handle_connect():
-    client_sid = request.sid
-    active_clients.add(client_sid)
-    print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Client connected: {client_sid}")
-    emit('connected', {'message': 'Connected to NetWatch SIEM'})
+    try:
+        client_sid = request.sid
+        active_clients.add(client_sid)
+        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Client connected: {client_sid}")
+        emit('connected', {'message': 'Connected to NetWatch SIEM'}, skip_errors=True)
+    except Exception:
+        pass
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    client_sid = request.sid
-    if client_sid in active_clients:
-        active_clients.remove(client_sid)
-    print(f"{Colors.YELLOW}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Client disconnected: {client_sid}")
+    try:
+        client_sid = request.sid
+        if client_sid in active_clients:
+            active_clients.remove(client_sid)
+        print(f"{Colors.YELLOW}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Client disconnected: {client_sid}")
+    except Exception:
+        pass
 
 @socketio.on('request_dashboard_stats')
 def handle_dashboard_stats_request():
     try:
         stats = db.get_dashboard_stats()
-        emit('dashboard_stats_update', {
-            'stats': stats,
-            'timestamp': datetime.now().isoformat()
-        })
-    except Exception as e:
-        print(f"{Colors.RED}Error in dashboard stats:{Colors.RESET} {e}")
+        if stats:
+            emit('dashboard_stats_update', {
+                'stats': stats,
+                'timestamp': datetime.now().isoformat()
+            }, skip_errors=True)
+    except Exception:
+        pass
 
 @socketio.on('request_device_list')
 def handle_device_list_request():
     try:
         devices = db.get_all_devices()
-        emit('device_list_update', {
-            'devices': devices,
-            'timestamp': datetime.now().isoformat()
-        })
-    except Exception as e:
-        print(f"{Colors.RED}Error in device list:{Colors.RESET} {e}")
+        if devices is not None:
+            emit('device_list_update', {
+                'devices': devices,
+                'timestamp': datetime.now().isoformat()
+            }, skip_errors=True)
+    except Exception:
+        pass
 
 
 if __name__ == '__main__':

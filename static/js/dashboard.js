@@ -1,6 +1,9 @@
 let activityChart = null;
 
 function updateDashboardStats() {
+    const el = document.getElementById('totalDevices');
+    if (!el) return;
+    
     fetch('/api/dashboard/stats')
         .then(res => res.json())
         .then(data => {
@@ -15,10 +18,12 @@ function updateDashboardStats() {
 }
 
 function updateRecentAlerts() {
+    const container = document.getElementById('alertsList');
+    if (!container) return;
+    
     fetch('/api/alerts?limit=5')
         .then(res => res.json())
         .then(data => {
-            const container = document.getElementById('alertsList');
             if (data.success && data.data.length > 0) {
                 container.innerHTML = data.data.map(alert => `
                     <div class="alert-box ${alert.severity} fade-in">
@@ -44,10 +49,12 @@ function updateRecentAlerts() {
 }
 
 function updateActiveDevices() {
+    const container = document.getElementById('devicesList');
+    if (!container) return;
+    
     fetch('/api/devices/active')
         .then(res => res.json())
         .then(data => {
-            const container = document.getElementById('devicesList');
             if (data.success && data.data.length > 0) {
                 container.innerHTML = data.data.slice(0, 5).map(device => `
                     <div class="device-card fade-in">
@@ -74,13 +81,15 @@ function updateActiveDevices() {
 }
 
 function updateActivityChart() {
+    const ctx = document.getElementById('networkChart');
+    if (!ctx) return;
+    
     fetch('/api/activity/timeline')
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                const ctx = document.getElementById('networkChart').getContext('2d');
+                const canvasContext = ctx.getContext('2d');
                 
-                // Prepare data for chart
                 const chartData = {
                     labels: data.data.map(d => {
                         const time = new Date(d.time);
@@ -106,25 +115,19 @@ function updateActivityChart() {
                     }]
                 };
                 
-                
                 if (activityChart) {
                     activityChart.destroy();
                 }
                 
-                // Create new chart
-                activityChart = new Chart(ctx, {
+                activityChart = new Chart(canvasContext, {
                     type: 'line',
                     data: chartData,
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        animation: {
-                            duration: 300 // Smooth animation on update
-                        },
+                        animation: { duration: 300 },
                         plugins: {
-                            legend: {
-                                display: false
-                            },
+                            legend: { display: false },
                             tooltip: {
                                 backgroundColor: 'rgba(15, 23, 42, 0.8)',
                                 borderColor: '#3b82f6',
@@ -144,9 +147,7 @@ function updateActivityChart() {
                                 },
                                 ticks: {
                                     color: '#94a3b8',
-                                    font: {
-                                        size: 12
-                                    }
+                                    font: { size: 12 }
                                 }
                             },
                             x: {
@@ -156,9 +157,7 @@ function updateActivityChart() {
                                 },
                                 ticks: {
                                     color: '#94a3b8',
-                                    font: {
-                                        size: 12
-                                    },
+                                    font: { size: 12 },
                                     maxTicksLimit: 12
                                 }
                             }
@@ -181,10 +180,11 @@ function formatTime(timestamp) {
     return time.toLocaleDateString();
 }
 
-// Load quick analytics data
 async function updateQuickAnalytics() {
     try {
-        // Load network health
+        const healthEl = document.getElementById('quickHealthScore');
+        if (!healthEl) return;
+        
         const healthResponse = await fetch('/api/analytics/network-health');
         const healthData = await healthResponse.json();
         
@@ -192,35 +192,33 @@ async function updateQuickAnalytics() {
             const healthScore = healthData.data.health_score;
             document.getElementById('quickHealthScore').textContent = healthScore;
             
-            // Update color based on health score
-            const healthElement = document.getElementById('quickHealthScore');
             if (healthScore >= 80) {
-                healthElement.className = 'text-2xl font-bold text-emerald-400';
+                healthEl.className = 'text-2xl font-bold text-emerald-400';
             } else if (healthScore >= 60) {
-                healthElement.className = 'text-2xl font-bold text-yellow-400';
+                healthEl.className = 'text-2xl font-bold text-yellow-400';
             } else {
-                healthElement.className = 'text-2xl font-bold text-red-400';
+                healthEl.className = 'text-2xl font-bold text-red-400';
             }
         }
         
-        // Load device trends for top vendor
         const trendsResponse = await fetch('/api/analytics/device-trends');
         const trendsData = await trendsResponse.json();
         
         if (trendsData.success && trendsData.data.vendor_distribution.length > 0) {
             const topVendor = trendsData.data.vendor_distribution[0];
-            document.getElementById('topVendor').textContent = topVendor.vendor;
+            const vendorEl = document.getElementById('topVendor');
+            if (vendorEl) vendorEl.textContent = topVendor.vendor;
         }
         
-        // Load alert trends for alert rate
         const alertResponse = await fetch('/api/analytics/alert-trends');
         const alertData = await alertResponse.json();
         
         if (alertData.success && alertData.data.alert_trends.length > 0) {
-            const recentAlerts = alertData.data.alert_trends.slice(-7); // Last 7 days
+            const recentAlerts = alertData.data.alert_trends.slice(-7);
             const totalAlerts = recentAlerts.reduce((sum, day) => sum + day.total, 0);
-            const alertRate = Math.round(totalAlerts / 7); // Average per day
-            document.getElementById('alertRate').textContent = `${alertRate}/d`;
+            const alertRate = Math.round(totalAlerts / 7);
+            const rateEl = document.getElementById('alertRate');
+            if (rateEl) rateEl.textContent = `${alertRate}/d`;
         }
         
     } catch (error) {
@@ -229,6 +227,16 @@ async function updateQuickAnalytics() {
 }
 
 function updatePageData() {
+    updateRecentAlerts();
+    updateActiveDevices();
+}
+
+window.updatePageData = updatePageData;
+
+function initializeDashboard() {
+    const dashboardEl = document.getElementById('totalDevices');
+    if (!dashboardEl) return;
+    
     updateDashboardStats();
     updateRecentAlerts();
     updateActiveDevices();
@@ -236,18 +244,25 @@ function updatePageData() {
     updateQuickAnalytics();
 }
 
-window.updatePageData = updatePageData;
-
-// Initial load
-updatePageData();
-
-setInterval(() => {
-    updateDashboardStats();
-    updateRecentAlerts();
-    updateActiveDevices();
-    updateQuickAnalytics();
-}, 3000);
+document.addEventListener('DOMContentLoaded', () => {
+    initializeDashboard();
+});
 
 setInterval(() => {
-    updateActivityChart();
-}, 2000);
+    if (document.getElementById('totalDevices')) {
+        updateRecentAlerts();
+        updateActiveDevices();
+    }
+}, 10000);
+
+setInterval(() => {
+    if (document.getElementById('networkChart')) {
+        updateActivityChart();
+    }
+}, 15000);
+
+setInterval(() => {
+    if (document.getElementById('quickHealthScore')) {
+        updateQuickAnalytics();
+    }
+}, 30000);
