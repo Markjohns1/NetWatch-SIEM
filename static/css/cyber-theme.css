@@ -35,27 +35,43 @@
 .active_scanning {
     font-size: 10px;
     animation: activeScanning 1.5s infinite alternate;
-    text-shadow: 0 0 8px currentColor;
+    text-shadow: 0 0 5px currentColor;
 }
 
 @keyframes activeScanning {
     0% {
-        color: rgba(255, 0, 0, 1.0); 
+        color: rgba(0, 255, 255, 1.0);
         transform: scale(1);
+        text-shadow: 0 0 5px rgba(0, 255, 255, 0.8);
     }
-    25% {
-        color: rgba(0, 255, 10, 1.0); 
+    20% {
+        color: rgba(0, 255, 0, 1.0); 
+        transform: scale(1.15);
+        text-shadow: 0 0 15px rgba(0, 255, 0, 0.9);
+    }
+    40% {
+        color: rgba(255, 255, 0, 1.0);  
         transform: scale(1.1);
+        text-shadow: 0 0 12px rgba(255, 255, 0, 0.8);
     }
-    50% {
-        color: rgba(0, 100, 255, 0.5);        
-        transform: scale(1.05);
+    60% {
+        color: rgba(255, 165, 0, 1.0); 
+        transform: scale(1.2);
+        text-shadow: 0 0 20px rgba(255, 165, 0, 0.9);
     }
-    75% {
-        color: rgba(255, 30, 0, 1.0); 
-        transform: scale(1);
+    80% {
+        color: rgba(255, 0, 0, 1.0); 
+        transform: scale(1.1);
+        text-shadow: 0 0 18px rgba(255, 0, 0, 0.9);
+    }
+    100% {
+        color: rgba(75, 0, 130, 1.0);         t
+        ransform: scale(1);
+        text-shadow: 0 0 25px rgba(75, 0, 130, 0.8);
     }
 }
+
+
 
 .active_scanning_smooth {
     font-size: 10px;

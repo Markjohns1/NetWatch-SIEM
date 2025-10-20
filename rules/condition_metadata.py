@@ -1,4 +1,3 @@
-
 # COMPLETE FILE WITH 20+ CONDITIONS FOR FALSE POSITIVE REDUCTION
 
 CONDITION_METADATA = {
@@ -304,19 +303,37 @@ def get_condition_metadata(condition_key):
     return CONDITION_METADATA.get(condition_key, {})
 
 
-elif threshold_type == 'number':
-    try:
-        threshold_val = int(threshold_value)  # Convert to int
-        threshold_min = meta.get('threshold_min', 0)
-        threshold_max = meta.get('threshold_max', 1000000)
-        
-        if threshold_val < threshold_min:  # Now comparing int to int
-            return False, f"Threshold too low (minimum: {threshold_min})"
-        if threshold_val > threshold_max:
-            return False, f"Threshold too high (maximum: {threshold_max})"
-        
+def validate_threshold(condition_key, threshold_value):
+    """Validate threshold value for a condition"""
+    meta = CONDITION_METADATA.get(condition_key, {})
+    threshold_type = meta.get('threshold_type')
+    
+    if threshold_type == 'boolean':
         return True, "Valid"
-    except ValueError:
-        return False, "Threshold must be a number"
+    
+    elif threshold_type == 'select':
+        options = meta.get('threshold_options', [])
+        valid_values = [opt['value'] for opt in options]
+        if threshold_value in valid_values:
+            return True, "Valid"
+        return False, f"Invalid selection. Must be one of: {', '.join(valid_values)}"
+    
+    elif threshold_type == 'number':
+        try:
+            if not threshold_value and threshold_value != 0:
+                return False, "Threshold value is required"
+                
+            threshold_val = int(threshold_value)
+            threshold_min = meta.get('threshold_min', 0)
+            threshold_max = meta.get('threshold_max', 1000000)
+            
+            if threshold_val < threshold_min:
+                return False, f"Threshold too low (minimum: {threshold_min})"
+            if threshold_val > threshold_max:
+                return False, f"Threshold too high (maximum: {threshold_max})"
+            
+            return True, "Valid"
+        except (ValueError, TypeError):
+            return False, "Threshold must be a number"
     
     return False, "Unknown threshold type"

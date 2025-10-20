@@ -1,5 +1,5 @@
 # File: rules/smart_alert_engine.py
-# COMPLETE AND CORRECTED VERSION
+# COMPLETE AND CORRECTED VERSION - FIXES "no such column: ip_address" ERROR
 
 from datetime import datetime, timedelta
 import json
@@ -47,7 +47,7 @@ class SmartAlertEngine:
         """)
         learning = cursor.fetchall()
         conn.close()
-        return {device['device_id']: device for device in learning}
+        return {dict(device)['device_id']: dict(device) for device in learning}
     
     def _generate_alert_hash(self, device_id, rule_name, condition_data):
         """Generate unique hash to prevent duplicate alerts"""
@@ -91,7 +91,7 @@ class SmartAlertEngine:
         
         alert_hash = self._generate_alert_hash(
             device['id'], rule['name'], 
-            {'condition': rule['condition'], 'threshold': rule['threshold']}
+            {'condition': rule['condition'], 'threshold': rule.get('threshold')}
         )
         
         if alert_hash in self.alert_cache:
@@ -102,11 +102,11 @@ class SmartAlertEngine:
         return True
     
     def _get_ip_history(self, device_id):
-        """Get device IP change history"""
+        """Get device reconnection history - FIXED: removed ip_address from SELECT"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT DISTINCT ip_address, timestamp 
+            SELECT timestamp, metadata
             FROM events 
             WHERE device_id = ? AND event_type IN ('device_online', 'ip_changed')
             ORDER BY timestamp DESC LIMIT 20
@@ -115,8 +115,8 @@ class SmartAlertEngine:
         conn.close()
         return history
     
-    def _count_recent_arp_conflicts(self, device_id, device_ip):
-        """Count ARP conflicts for a device"""
+    def _count_recent_arp_conflicts(self, device_id):
+        """Count ARP conflicts for a device - FIXED: removed unused device_ip parameter"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
         cursor.execute('''
@@ -133,8 +133,12 @@ class SmartAlertEngine:
         """Enhanced rule evaluation with comprehensive condition logic"""
         try:
             condition = rule['condition']
-            threshold = rule['threshold']
+            threshold = rule.get('threshold', 0)
             device_id = device['id']
+            
+            # Ensure device has required fields
+            if not device.get('ip_address') or not device.get('mac_address'):
+                return False
             
             if not self._should_alert(device, rule, True):
                 return False
@@ -166,7 +170,7 @@ class SmartAlertEngine:
                 min_threshold = 50 if self._is_whitelisted(device) else 20
                 if device.get('reconnect_count', 0) >= max(threshold, min_threshold):
                     triggered = True
-                    description = f"Device reconnected {device['reconnect_count']} times (threshold: {threshold})"
+                    description = f"Device {device['ip_address']} reconnected {device['reconnect_count']} times (threshold: {threshold})"
             
             elif condition == 'reconnect_frequency':
                 conn = self.db.get_connection()
@@ -182,7 +186,7 @@ class SmartAlertEngine:
                 
                 if recent_reconnects >= threshold:
                     triggered = True
-                    description = f"Device reconnected {recent_reconnects} times in 10 minutes (threshold: {threshold})"
+                    description = f"Device {device['ip_address']} reconnected {recent_reconnects} times in 10 minutes (threshold: {threshold})"
             
             # MAC Address Conditions
             elif condition == 'mac_pattern':
@@ -193,40 +197,58 @@ class SmartAlertEngine:
                 }
                 
                 mac_prefix = device['mac_address'][:8]
-                patterns = suspicious_patterns.get(threshold, [])
+                patterns = suspicious_patterns.get(str(threshold), [])
                 
                 if any(mac_prefix.startswith(p[:8]) for p in patterns) and not self._is_whitelisted(device):
                     triggered = True
-                    description = f"Suspicious MAC pattern: {device['mac_address']}"
+                    description = f"Suspicious MAC pattern: {device['mac_address']} on {device['ip_address']}"
             
             elif condition == 'mac_changed':
-                ip_history = self._get_ip_history(device_id)
-                if len(ip_history) >= 2:
-                    conn = self.db.get_connection()
-                    cursor = conn.cursor()
-                    cursor.execute('SELECT COUNT(DISTINCT mac_address) FROM events WHERE device_id = ?', (device_id,))
-                    unique_macs = cursor.fetchone()[0]
-                    conn.close()
-                    
-                    if unique_macs > 1:
-                        triggered = True
-                        description = f"MAC address changed for IP {device['ip_address']}"
+                conn = self.db.get_connection()
+                cursor = conn.cursor()
+                
+                # Check if this IP has been associated with different MACs
+                cursor.execute('''
+                    SELECT COUNT(DISTINCT mac_address) 
+                    FROM devices 
+                    WHERE ip_address = ?
+                ''', (device['ip_address'],))
+                
+                unique_macs = cursor.fetchone()[0]
+                conn.close()
+                
+                if unique_macs > 1:
+                    triggered = True
+                    description = f"MAC address changed for IP {device['ip_address']}"
             
             # Vendor Conditions
             elif condition == 'vendor_unknown':
-                if device['vendor'] == 'Unknown' and not self._is_whitelisted(device):
+                if device.get('vendor') == 'Unknown' and not self._is_whitelisted(device):
                     triggered = True
-                    description = f"Device with unknown vendor: {device['ip_address']}"
+                    description = f"Device with unknown vendor: {device['ip_address']} ({device['mac_address']})"
             
             elif condition == 'suspicious_vendor':
+                # Placeholder for suspicious vendor detection
                 triggered = False
             
             # IP Address Conditions
             elif condition == 'ip_changed':
-
-                # This condition requires IP tracking which isn't currently implemented
-               
-                triggered = False
+                conn = self.db.get_connection()
+                cursor = conn.cursor()
+                
+                # Check if this MAC had different IPs
+                cursor.execute('''
+                    SELECT COUNT(DISTINCT ip_address) 
+                    FROM devices 
+                    WHERE mac_address = ?
+                ''', (device['mac_address'],))
+                
+                ip_count = cursor.fetchone()[0]
+                conn.close()
+                
+                if ip_count > 1 and self._is_whitelisted(device):
+                    triggered = True
+                    description = f"Trusted device changed IP address: MAC {device['mac_address']} now at {device['ip_address']}"
             
             elif condition == 'rapid_ip_changes':
                 ip_history = self._get_ip_history(device_id)
@@ -236,9 +258,10 @@ class SmartAlertEngine:
                 
                 if len(last_hour_ips) >= threshold:
                     triggered = True
-                    description = f"Device cycled through {len(last_hour_ips)} IPs in 1 hour (threshold: {threshold})"
+                    description = f"Device {device['ip_address']} had {len(last_hour_ips)} reconnections in 1 hour (threshold: {threshold})"
             
             elif condition == 'private_ip_overlap':
+                # Placeholder for IP range anomaly detection
                 triggered = False
             
             # Activity Conditions
@@ -249,13 +272,15 @@ class SmartAlertEngine:
                     
                     if inactive_hours >= threshold:
                         triggered = True
-                        description = f"Device inactive for {int(inactive_hours)} hours"
+                        description = f"Device {device['ip_address']} inactive for {int(inactive_hours)} hours"
             
             elif condition == 'no_activity':
+                # Placeholder for no network activity detection
                 triggered = False
             
             # Network Location Conditions
             elif condition == 'location_change':
+                # Placeholder for location change detection
                 triggered = False
             
             elif condition == 'simultaneous_ips':
@@ -271,31 +296,36 @@ class SmartAlertEngine:
                 
                 if active_ips >= threshold:
                     triggered = True
-                    description = f"One MAC has {active_ips} simultaneous IPs (threshold: {threshold})"
+                    description = f"MAC {device['mac_address']} has {active_ips} simultaneous IPs (threshold: {threshold})"
             
             # Behavior Conditions
             elif condition == 'abnormal_scan':
+                # Placeholder for network scanning detection
                 triggered = False
             
             elif condition == 'broadcast_storm':
+                # Placeholder for broadcast storm detection
                 triggered = False
             
             elif condition == 'arp_spoofing':
-                arp_conflicts = self._count_recent_arp_conflicts(device_id, device['ip_address'])
+                arp_conflicts = self._count_recent_arp_conflicts(device_id)
                 
                 if arp_conflicts >= threshold:
                     triggered = True
-                    description = f"Detected {arp_conflicts} ARP conflicts for this device (threshold: {threshold})"
+                    description = f"Detected {arp_conflicts} ARP conflicts for {device['ip_address']} (threshold: {threshold})"
             
             # Device Type Conditions
             elif condition == 'unexpected_device_type':
+                # Placeholder for unexpected device type detection
                 triggered = False
             
             # Multi-Condition Scenarios
             elif condition == 'new_untrusted_behavior':
+                # Placeholder for new device suspicious behavior
                 triggered = False
             
             elif condition == 'repeated_failures':
+                # Placeholder for repeated failures detection
                 triggered = False
             
             # Create alert if rule was triggered
@@ -332,13 +362,23 @@ class SmartAlertEngine:
             
         except Exception as e:
             print(f"Error evaluating smart rule {rule['name']}: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def process_smart_alerts(self, device_id):
         """Process alerts with smart logic - NO DUPLICATES"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM devices WHERE id = ?', (device_id,))
+        
+        # Explicitly select all columns to ensure proper dict conversion
+        cursor.execute('''
+            SELECT id, ip_address, mac_address, hostname, vendor, 
+                   device_name, is_trusted, risk_score, status, 
+                   first_seen, last_seen, reconnect_count, metadata, marked_safe
+            FROM devices WHERE id = ?
+        ''', (device_id,))
+        
         device_row = cursor.fetchone()
         conn.close()
         
@@ -347,6 +387,7 @@ class SmartAlertEngine:
         
         device = dict(device_row)
         
+        # Reload rules and learning data
         self.rules = self._load_rules()
         self.learning_data = self._load_learning_data()
         
@@ -372,12 +413,13 @@ class SmartAlertEngine:
         conn.close()
         
         for device in devices:
-            self.db.update_device_status(device['id'], 'offline')
+            device_dict = dict(device)
+            self.db.update_device_status(device_dict['id'], 'offline')
             self.db.add_event(
                 event_type='device_offline',
                 severity='info',
-                description=f"Device {device['ip_address']} went offline",
-                device_id=device['id']
+                description=f"Device {device_dict['ip_address']} went offline",
+                device_id=device_dict['id']
             )
     
     def add_rule_validation(self, rule_data):
@@ -419,7 +461,7 @@ class SmartAlertEngine:
             'id': 'test',
             'name': rule_data['name'],
             'condition': rule_data['condition'],
-            'threshold': rule_data['threshold'],
+            'threshold': rule_data.get('threshold', 0),
             'severity': rule_data['severity'],
             'enabled': 1
         }
@@ -431,7 +473,7 @@ class SmartAlertEngine:
             "device_info": {
                 "ip": device['ip_address'],
                 "mac": device['mac_address'],
-                "vendor": device['vendor'],
+                "vendor": device.get('vendor', 'Unknown'),
                 "trusted": device.get('is_trusted', 0)
             }
         }
