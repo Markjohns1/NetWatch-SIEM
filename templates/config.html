@@ -169,7 +169,7 @@
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                showNotification('✓ Configuration saved! Scan interval: ' + data.scan_interval + 's', 'success');
+                showNotification('Configuration saved! Scan interval: ' + data.scan_interval + 's', 'success');
                 loadConfiguration(); // Reload to show saved values
             } else {
                 showNotification('Error saving configuration: ' + data.error, 'error');

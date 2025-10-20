@@ -19,73 +19,484 @@
 
 <!-- Add Rule Modal -->
 <div id="addRuleModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-    <div class="bg-slate-900 rounded-lg p-6 w-full max-w-md border border-slate-700">
+    <div class="bg-slate-900 rounded-lg p-6 w-full max-w-md border border-slate-700 max-h-screen overflow-y-auto">
         <h3 class="text-lg font-medium mb-4">Add Custom Rule</h3>
         
         <form id="addRuleForm" onsubmit="addRule(event)">
             <div class="space-y-4">
+                <!-- Rule Name -->
                 <div>
-                    <label class="text-sm text-slate-400">Rule Name</label>
+                    <label class="text-sm text-slate-400">Rule Name *</label>
                     <input type="text" id="ruleName" required 
-                           class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2"
-                           placeholder="e.g., High Traffic Alert">
+                           class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
+                           placeholder="e.g., High Reconnect Alert">
                 </div>
 
+                <!-- Condition Selection -->
                 <div>
-                    <label class="text-sm text-slate-400">Condition</label>
-                    <select id="ruleCondition" required onchange="updateThresholdHelp()"
-                            class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2">
-                        <option value="device_first_seen">New Device Detected</option>
-                        <option value="reconnect_count">Frequent Reconnections</option>
-                        <option value="inactive_duration">Device Inactive</option>
-                        <option value="mac_pattern">Suspicious MAC</option>
-                        <option value="ip_changed">IP Address Changed</option>
-                        <option value="vendor_unknown">Unknown Vendor</option>
-                        <option value="custom">Custom Condition</option>
+                    <label class="text-sm text-slate-400">Condition *</label>
+                    <select id="ruleCondition" required onchange="onConditionChanged()"
+                            class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none">
+                        <option value="">-- Select a condition --</option>
                     </select>
+                    <p id="conditionDescription" class="text-xs text-slate-500 mt-1 italic"></p>
                 </div>
 
-                <div>
-                    <label class="text-sm text-slate-400">Threshold</label>
-                    <input type="number" id="ruleThreshold" value="1" min="1" 
-                           class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2">
-                    <p class="text-xs text-slate-500 mt-1">
-                        <span id="thresholdHelp">Number of occurrences before alert triggers</span>
-                    </p>
+                <!-- Threshold Input Container (Dynamic) -->
+                <div id="thresholdContainer" style="display: none;">
+                    <label id="thresholdLabel" class="text-sm text-slate-400">Threshold *</label>
+                    
+                    <!-- Number/Duration Input -->
+                    <input type="number" id="ruleThreshold" 
+                           class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
+                           style="display: none;">
+                    
+                    <!-- Select Input -->
+                    <select id="ruleThresholdSelect" 
+                           class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
+                           style="display: none;"></select>
+                    
+                    <!-- Help Text -->
+                    <p id="thresholdHelp" class="text-xs text-slate-400 mt-1"></p>
+                    
+                    <!-- Validation Message -->
+                    <p id="validationMessage" class="text-xs mt-1"></p>
+                    
+                    <!-- Example Text -->
+                    <p id="exampleText" class="text-xs text-slate-500 mt-2 italic"></p>
                 </div>
 
+                <!-- Severity Selection -->
                 <div>
-                    <label class="text-sm text-slate-400">Severity</label>
+                    <label class="text-sm text-slate-400">Severity *</label>
                     <select id="ruleSeverity" 
-                            class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2">
-                        <option value="low">Low</option>
-                        <option value="medium" selected>Medium</option>
-                        <option value="high">High</option>
+                            class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none">
+                        <option value="low">Low - Informational</option>
+                        <option value="medium" selected>Medium - Requires Investigation</option>
+                        <option value="high">High - Critical</option>
                     </select>
                 </div>
             </div>
 
-            <div class="flex gap-3 mt-6">
+            <!-- Action Buttons -->
+            <div class="flex gap-2 mt-6 flex-wrap">
                 <button type="button" onclick="hideAddRuleModal()" 
-                        class="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded">
+                        class="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm">
                     Cancel
                 </button>
-                <button type="button" onclick="testRule()" 
-                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded">
-                    Test Rule
+                <button type="button" onclick="testRuleBeforeSubmit()" id="testRuleBtn"
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm" style="display: none;">
+                    Test
                 </button>
                 <button type="submit" 
-                        class="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded">
+                        class="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded text-sm">
                     Add Rule
                 </button>
             </div>
         </form>
     </div>
 </div>
+
+<!-- Edit Rule Modal -->
+<div id="editRuleModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div class="bg-slate-900 rounded-lg p-6 w-full max-w-md border border-slate-700 max-h-screen overflow-y-auto">
+        <h3 class="text-lg font-medium mb-4">Edit Rule</h3>
+        
+        <form id="editRuleForm" onsubmit="updateRule(event)">
+            <div class="space-y-4">
+                <!-- Rule Name -->
+                <div>
+                    <label class="text-sm text-slate-400">Rule Name *</label>
+                    <input type="text" id="editRuleName" required 
+                           class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
+                           placeholder="e.g., High Reconnect Alert">
+                </div>
+
+                <!-- Condition Selection -->
+                <div>
+                    <label class="text-sm text-slate-400">Condition *</label>
+                    <select id="editRuleCondition" required onchange="onEditConditionChanged()"
+                            class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none">
+                        <option value="">-- Select a condition --</option>
+                    </select>
+                    <p id="editConditionDescription" class="text-xs text-slate-500 mt-1 italic"></p>
+                </div>
+
+                <!-- Threshold Input Container (Dynamic) -->
+                <div id="editThresholdContainer" style="display: none;">
+                    <label id="editThresholdLabel" class="text-sm text-slate-400">Threshold *</label>
+                    
+                    <input type="number" id="editRuleThreshold" 
+                           class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
+                           style="display: none;">
+                    
+                    <select id="editRuleThresholdSelect" 
+                           class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
+                           style="display: none;"></select>
+                    
+                    <p id="editThresholdHelp" class="text-xs text-slate-400 mt-1"></p>
+                    <p id="editValidationMessage" class="text-xs mt-1"></p>
+                    <p id="editExampleText" class="text-xs text-slate-500 mt-2 italic"></p>
+                </div>
+
+                <!-- Severity Selection -->
+                <div>
+                    <label class="text-sm text-slate-400">Severity *</label>
+                    <select id="editRuleSeverity" 
+                            class="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none">
+                        <option value="low">Low - Informational</option>
+                        <option value="medium">Medium - Requires Investigation</option>
+                        <option value="high">High - Critical</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-2 mt-6 flex-wrap">
+                <button type="button" onclick="hideEditRuleModal()" 
+                        class="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm">
+                    Cancel
+                </button>
+                <button type="submit" 
+                        class="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded text-sm">
+                    Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
+// Global state
+let conditionMetadata = {};
+let currentCondition = null;
+let editingRuleId = null;
+let editCurrentCondition = null;
+
+
+// INITIALIZATION & DATA LOADING
+
+
+function initializeRulesPage() {
+    // Load condition metadata first
+    fetch('/api/rules/conditions')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                conditionMetadata = data.data;
+                populateConditionDropdown();
+                loadRules();
+            }
+        })
+        .catch(err => console.error('Failed to load condition metadata:', err));
+}
+
+function populateConditionDropdown() {
+    const select = document.getElementById('ruleCondition');
+    
+    // Keep the placeholder option
+    const placeholder = select.querySelector('option[value=""]');
+    select.innerHTML = '';
+    select.appendChild(placeholder);
+    
+    // Add conditions with user-friendly labels
+    Object.entries(conditionMetadata).forEach(([key, meta]) => {
+        const option = document.createElement('option');
+        option.value = key;
+        option.textContent = meta.label;
+        select.appendChild(option);
+    });
+}
+
+
+// CONDITION HANDLING
+
+
+function onConditionChanged() {
+    const conditionKey = document.getElementById('ruleCondition').value;
+    
+    if (!conditionKey || !conditionMetadata[conditionKey]) {
+        document.getElementById('thresholdContainer').style.display = 'none';
+        currentCondition = null;
+        return;
+    }
+    
+    currentCondition = conditionMetadata[conditionKey];
+    updateThresholdUI();
+    updateConditionDescription();
+}
+
+function updateConditionDescription() {
+    const desc = document.getElementById('conditionDescription');
+    if (currentCondition) {
+        desc.textContent = currentCondition.description;
+    }
+}
+
+function updateThresholdUI() {
+    const container = document.getElementById('thresholdContainer');
+    const numberInput = document.getElementById('ruleThreshold');
+    const selectInput = document.getElementById('ruleThresholdSelect');
+    const label = document.getElementById('thresholdLabel');
+    const help = document.getElementById('thresholdHelp');
+    const example = document.getElementById('exampleText');
+    const testBtn = document.getElementById('testRuleBtn');
+    
+    container.style.display = 'block';
+    numberInput.style.display = 'none';
+    selectInput.style.display = 'none';
+    testBtn.style.display = 'none';
+    
+    // Hide threshold for boolean conditions
+    if (currentCondition.threshold_type === 'boolean') {
+        container.style.display = 'none';
+        testBtn.style.display = 'inline-block';
+        return;
+    }
+    
+    testBtn.style.display = 'inline-block';
+    
+    if (currentCondition.threshold_type === 'number') {
+        // Show number input
+        numberInput.style.display = 'block';
+        numberInput.min = currentCondition.threshold_min;
+        numberInput.max = currentCondition.threshold_max;
+        numberInput.value = currentCondition.threshold_default;
+        numberInput.step = currentCondition.step || 1;
+        
+        label.textContent = `${currentCondition.label} - ${currentCondition.threshold_unit}`;
+        help.textContent = currentCondition.threshold_help;
+        example.textContent = `Example: ${currentCondition.example}`;
+        
+        // Real-time validation
+        numberInput.addEventListener('change', validateThreshold);
+        
+    } else if (currentCondition.threshold_type === 'select') {
+        // Show select input
+        selectInput.style.display = 'block';
+        selectInput.innerHTML = '';
+        
+        currentCondition.threshold_options.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            selectInput.appendChild(option);
+        });
+        
+        selectInput.value = currentCondition.threshold_default;
+        
+        label.textContent = 'Pattern Type';
+        help.textContent = currentCondition.threshold_help;
+        example.textContent = `Example: ${currentCondition.example}`;
+    }
+}
+
+function validateThreshold() {
+    const conditionKey = document.getElementById('ruleCondition').value;
+    const thresholdValue = document.getElementById('ruleThreshold').value;
+    const validationMsg = document.getElementById('validationMessage');
+    
+    if (!thresholdValue) {
+        validationMsg.textContent = '';
+        validationMsg.className = 'text-xs mt-1';
+        return;
+    }
+    
+    fetch('/api/rules/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            condition: conditionKey,
+            threshold: thresholdValue
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            if (data.valid) {
+                validationMsg.textContent = 'Valid';
+                validationMsg.className = 'text-xs mt-1 text-emerald-400';
+            } else {
+                validationMsg.textContent = data.message;
+                validationMsg.className = 'text-xs mt-1 text-red-400';
+            }
+        }
+    });
+}
+
+
+// MODAL MANAGEMENT - ADD
+
+
+function showAddRuleModal() {
+    document.getElementById('addRuleModal').classList.remove('hidden');
+    document.getElementById('ruleName').focus();
+}
+
+function hideAddRuleModal() {
+    document.getElementById('addRuleModal').classList.add('hidden');
+    document.getElementById('addRuleForm').reset();
+    currentCondition = null;
+    document.getElementById('thresholdContainer').style.display = 'none';
+    document.getElementById('validationMessage').textContent = '';
+}
+
+
+// MODAL MANAGEMENT - EDIT
+
+
+function showEditRuleModal(ruleId) {
+    editingRuleId = ruleId;
+    
+    // Find the rule data
+    fetch('/api/rules')
+        .then(res => res.json())
+        .then(data => {
+            const rule = data.data.find(r => r.id === ruleId);
+            if (rule) {
+                document.getElementById('editRuleName').value = rule.name;
+                document.getElementById('editRuleCondition').value = rule.condition;
+                document.getElementById('editRuleSeverity').value = rule.severity;
+                
+                // Populate condition dropdown
+                const select = document.getElementById('editRuleCondition');
+                select.innerHTML = '';
+                Object.entries(conditionMetadata).forEach(([key, meta]) => {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = meta.label;
+                    select.appendChild(option);
+                });
+                
+                select.value = rule.condition;
+                
+                // Set threshold value
+                if (conditionMetadata[rule.condition].threshold_type === 'number') {
+                    document.getElementById('editRuleThreshold').value = rule.threshold;
+                } else if (conditionMetadata[rule.condition].threshold_type === 'select') {
+                    document.getElementById('editRuleThresholdSelect').value = rule.threshold;
+                }
+                
+                onEditConditionChanged();
+                
+                document.getElementById('editRuleModal').classList.remove('hidden');
+            }
+        });
+}
+
+function hideEditRuleModal() {
+    document.getElementById('editRuleModal').classList.add('hidden');
+    document.getElementById('editRuleForm').reset();
+    editingRuleId = null;
+    editCurrentCondition = null;
+}
+
+function onEditConditionChanged() {
+    const conditionKey = document.getElementById('editRuleCondition').value;
+    
+    if (!conditionKey || !conditionMetadata[conditionKey]) {
+        document.getElementById('editThresholdContainer').style.display = 'none';
+        editCurrentCondition = null;
+        return;
+    }
+    
+    editCurrentCondition = conditionMetadata[conditionKey];
+    updateEditThresholdUI();
+    updateEditConditionDescription();
+}
+
+function updateEditConditionDescription() {
+    const desc = document.getElementById('editConditionDescription');
+    if (editCurrentCondition) {
+        desc.textContent = editCurrentCondition.description;
+    }
+}
+
+function updateEditThresholdUI() {
+    const container = document.getElementById('editThresholdContainer');
+    const numberInput = document.getElementById('editRuleThreshold');
+    const selectInput = document.getElementById('editRuleThresholdSelect');
+    const label = document.getElementById('editThresholdLabel');
+    const help = document.getElementById('editThresholdHelp');
+    const example = document.getElementById('editExampleText');
+    
+    container.style.display = 'block';
+    numberInput.style.display = 'none';
+    selectInput.style.display = 'none';
+    
+    if (editCurrentCondition.threshold_type === 'boolean') {
+        container.style.display = 'none';
+        return;
+    }
+    
+    if (editCurrentCondition.threshold_type === 'number') {
+        numberInput.style.display = 'block';
+        numberInput.min = editCurrentCondition.threshold_min;
+        numberInput.max = editCurrentCondition.threshold_max;
+        numberInput.step = editCurrentCondition.step || 1;
+        
+        label.textContent = `${editCurrentCondition.label} - ${editCurrentCondition.threshold_unit}`;
+        help.textContent = editCurrentCondition.threshold_help;
+        example.textContent = `Example: ${editCurrentCondition.example}`;
+        
+        numberInput.addEventListener('change', validateEditThreshold);
+    } else if (editCurrentCondition.threshold_type === 'select') {
+        selectInput.style.display = 'block';
+        selectInput.innerHTML = '';
+        
+        editCurrentCondition.threshold_options.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            selectInput.appendChild(option);
+        });
+        
+        label.textContent = 'Pattern Type';
+        help.textContent = editCurrentCondition.threshold_help;
+        example.textContent = `Example: ${editCurrentCondition.example}`;
+    }
+}
+
+function validateEditThreshold() {
+    const conditionKey = document.getElementById('editRuleCondition').value;
+    const thresholdValue = document.getElementById('editRuleThreshold').value;
+    const validationMsg = document.getElementById('editValidationMessage');
+    
+    if (!thresholdValue) {
+        validationMsg.textContent = '';
+        validationMsg.className = 'text-xs mt-1';
+        return;
+    }
+    
+    fetch('/api/rules/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            condition: conditionKey,
+            threshold: thresholdValue
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            if (data.valid) {
+                validationMsg.textContent = 'Valid';
+                validationMsg.className = 'text-xs mt-1 text-emerald-400';
+            } else {
+                validationMsg.textContent = data.message;
+                validationMsg.className = 'text-xs mt-1 text-red-400';
+            }
+        }
+    });
+}
+
+
+// RULE MANAGEMENT
+
+
 function loadRules() {
     fetch('/api/rules')
         .then(res => res.json())
@@ -108,8 +519,8 @@ function loadRules() {
                             ${data.data.map(rule => `
                                 <tr>
                                     <td class="py-3 font-medium">${rule.name}</td>
-                                    <td class="py-3 text-slate-400">${rule.condition}</td>
-                                    <td class="py-3">${rule.threshold}</td>
+                                    <td class="py-3 text-slate-400">${getConditionLabel(rule.condition)}</td>
+                                    <td class="py-3">${rule.threshold || '-'}</td>
                                     <td class="py-3">
                                         <span class="px-2 py-1 rounded text-xs ${getSeverityClass(rule.severity)}">
                                             ${rule.severity.toUpperCase()}
@@ -121,7 +532,11 @@ function loadRules() {
                                             ${rule.enabled ? 'Enabled' : 'Disabled'}
                                         </button>
                                     </td>
-                                    <td class="py-3">
+                                    <td class="py-3 flex gap-2">
+                                        <button onclick="showEditRuleModal(${rule.id})" 
+                                                class="text-blue-400 hover:text-blue-300">
+                                            <i data-feather="edit-2" class="w-4 h-4"></i>
+                                        </button>
                                         <button onclick="deleteRule(${rule.id}, '${rule.name}')" 
                                                 class="text-red-400 hover:text-red-300">
                                             <i data-feather="trash-2" class="w-4 h-4"></i>
@@ -134,27 +549,38 @@ function loadRules() {
                 `;
                 feather.replace();
             } else {
-                container.innerHTML = '<div class="text-center text-slate-400 py-8">No rules configured</div>';
+                container.innerHTML = '<div class="text-center text-slate-400 py-8">No rules configured yet. Click "Add Custom Rule" to get started!</div>';
             }
         });
 }
 
-function showAddRuleModal() {
-    document.getElementById('addRuleModal').classList.remove('hidden');
-}
-
-function hideAddRuleModal() {
-    document.getElementById('addRuleModal').classList.add('hidden');
-    document.getElementById('addRuleForm').reset();
+function getConditionLabel(conditionKey) {
+    if (conditionMetadata[conditionKey]) {
+        return conditionMetadata[conditionKey].label;
+    }
+    return conditionKey;
 }
 
 function addRule(event) {
     event.preventDefault();
     
+    const conditionKey = document.getElementById('ruleCondition').value;
+    const conditionMeta = conditionMetadata[conditionKey];
+    
+    let threshold = null;
+    
+    if (conditionMeta.threshold_type === 'number') {
+        threshold = document.getElementById('ruleThreshold').value;
+    } else if (conditionMeta.threshold_type === 'select') {
+        threshold = document.getElementById('ruleThresholdSelect').value;
+    } else if (conditionMeta.threshold_type === 'boolean') {
+        threshold = 1;
+    }
+    
     const ruleData = {
         name: document.getElementById('ruleName').value,
-        condition: document.getElementById('ruleCondition').value,
-        threshold: parseInt(document.getElementById('ruleThreshold').value),
+        condition: conditionKey,
+        threshold: threshold,
         severity: document.getElementById('ruleSeverity').value,
         rule_type: 'device_event'
     };
@@ -173,7 +599,49 @@ function addRule(event) {
         } else {
             showNotification('Error: ' + data.error, 'error');
         }
-    });
+    })
+    .catch(err => showNotification('Failed to add rule', 'error'));
+}
+
+function updateRule(event) {
+    event.preventDefault();
+    
+    const conditionKey = document.getElementById('editRuleCondition').value;
+    const conditionMeta = conditionMetadata[conditionKey];
+    
+    let threshold = null;
+    
+    if (conditionMeta.threshold_type === 'number') {
+        threshold = document.getElementById('editRuleThreshold').value;
+    } else if (conditionMeta.threshold_type === 'select') {
+        threshold = document.getElementById('editRuleThresholdSelect').value;
+    } else if (conditionMeta.threshold_type === 'boolean') {
+        threshold = 1;
+    }
+    
+    const ruleData = {
+        name: document.getElementById('editRuleName').value,
+        condition: conditionKey,
+        threshold: threshold,
+        severity: document.getElementById('editRuleSeverity').value
+    };
+    
+    fetch(`/api/rules/${editingRuleId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ruleData)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Rule updated successfully!', 'success');
+            hideEditRuleModal();
+            loadRules();
+        } else {
+            showNotification('Error: ' + data.error, 'error');
+        }
+    })
+    .catch(err => showNotification('Failed to update rule', 'error'));
 }
 
 function toggleRule(ruleId, currentlyEnabled) {
@@ -210,6 +678,62 @@ function deleteRule(ruleId, ruleName) {
     });
 }
 
+function testRuleBeforeSubmit() {
+    const conditionKey = document.getElementById('ruleCondition').value;
+    const ruleName = document.getElementById('ruleName').value;
+    
+    if (!ruleName || !conditionKey) {
+        showNotification('Please fill in rule name and condition', 'error');
+        return;
+    }
+    
+    let threshold = null;
+    
+    if (currentCondition.threshold_type === 'number') {
+        threshold = document.getElementById('ruleThreshold').value;
+    } else if (currentCondition.threshold_type === 'select') {
+        threshold = document.getElementById('ruleThresholdSelect').value;
+    } else if (currentCondition.threshold_type === 'boolean') {
+        threshold = 1;
+    }
+    
+    // Get first available device for testing
+    fetch('/api/devices?limit=1')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.data.length > 0) {
+                const testDeviceId = data.data[0].id;
+                
+                fetch('/api/rules/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: ruleName,
+                        condition: conditionKey,
+                        threshold: threshold,
+                        severity: document.getElementById('ruleSeverity').value,
+                        device_id: testDeviceId
+                    })
+                })
+                .then(res => res.json())
+                .then(result => {
+                    if (result.success) {
+                        const testResult = result.result;
+                        if (testResult.would_trigger) {
+                            showNotification(`Rule WOULD TRIGGER on ${testResult.device_info.ip}`, 'success');
+                        } else {
+                            showNotification(`Rule would NOT trigger on ${testResult.device_info.ip}`, 'info');
+                        }
+                    } else {
+                        showNotification('Test failed: ' + result.error, 'error');
+                    }
+                });
+            } else {
+                showNotification('No devices available for testing', 'error');
+            }
+        });
+}
+
 function getSeverityClass(severity) {
     const classes = {
         'high': 'bg-red-500/20 text-red-400',
@@ -222,91 +746,16 @@ function getSeverityClass(severity) {
 function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 px-4 py-3 rounded shadow-lg ${
-        type === 'success' ? 'bg-emerald-500' : 'bg-red-500'
+        type === 'success' ? 'bg-emerald-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500'
     } text-white z-50`;
     notification.textContent = message;
     document.body.appendChild(notification);
     
-    setTimeout(() => notification.remove(), 3000);
+    setTimeout(() => notification.remove(), 4000);
 }
 
-function updateThresholdHelp() {
-    const condition = document.getElementById('ruleCondition').value;
-    const help = document.getElementById('thresholdHelp');
-    const threshold = document.getElementById('ruleThreshold');
-    
-    const helpTexts = {
-        'device_first_seen': 'Hours since device first seen (minimum 1)',
-        'reconnect_count': 'Number of reconnections (minimum 5)',
-        'inactive_duration': 'Seconds of inactivity (minimum 3600 = 1 hour)',
-        'mac_pattern': 'Number of suspicious patterns (usually 1)',
-        'vendor_unknown': 'Number of unknown vendors (usually 1)',
-        'ip_changed': 'Number of IP changes (usually 1)'
-    };
-    
-    help.textContent = helpTexts[condition] || 'Number of occurrences before alert triggers';
-    
-    // Set appropriate default values
-    if (condition === 'reconnect_count') {
-        threshold.value = 10;
-        threshold.min = 5;
-    } else if (condition === 'inactive_duration') {
-        threshold.value = 7200; // 2 hours
-        threshold.min = 3600;
-    } else {
-        threshold.value = 1;
-        threshold.min = 1;
-    }
-}
-
-function testRule() {
-    const ruleData = {
-        name: document.getElementById('ruleName').value,
-        condition: document.getElementById('ruleCondition').value,
-        threshold: parseInt(document.getElementById('ruleThreshold').value),
-        severity: document.getElementById('ruleSeverity').value
-    };
-    
-    if (!ruleData.name || !ruleData.condition) {
-        showNotification('Please fill in rule name and condition', 'error');
-        return;
-    }
-    
-    // Get first available device for testing
-    fetch('/api/devices')
-        .then(res => res.json())
-        .then(data => {
-            if (data.success && data.data.length > 0) {
-                const testDeviceId = data.data[0].id;
-                
-                fetch('/api/rules/test', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        ...ruleData,
-                        device_id: testDeviceId
-                    })
-                })
-                .then(res => res.json())
-                .then(result => {
-                    if (result.success) {
-                        const testResult = result.result;
-                        if (testResult.would_trigger) {
-                            showNotification(`✅ Rule would TRIGGER on device ${testResult.device_info.ip}`, 'success');
-                        } else {
-                            showNotification(`ℹ️ Rule would NOT trigger on device ${testResult.device_info.ip}`, 'info');
-                        }
-                    } else {
-                        showNotification('Test failed: ' + result.error, 'error');
-                    }
-                });
-            } else {
-                showNotification('No devices available for testing', 'error');
-            }
-        });
-}
-
-loadRules();
+// Initialize page on load
+document.addEventListener('DOMContentLoaded', initializeRulesPage);
 setInterval(loadRules, 30000);
 </script>
 {% endblock %}

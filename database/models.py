@@ -140,33 +140,8 @@ class Database:
         conn.commit()
         conn.close()
         
-        self._create_default_rules()
+        # Only create default config, NOT default rules
         self._create_default_config()
-    
-    def _create_default_rules(self):
-        default_rules = [
-            ('new_device_detected', 'device_event', 'device_first_seen', 1, 'high'),
-            ('frequent_reconnect', 'device_event', 'reconnect_count', 10, 'medium'),
-            ('device_inactive', 'device_event', 'inactive_duration', 7200, 'low'),
-            ('suspicious_mac', 'device_event', 'mac_pattern', 1, 'high'),
-            ('ip_change', 'device_event', 'ip_changed', 1, 'medium'),
-            ('unknown_vendor', 'device_event', 'vendor_unknown', 1, 'low')
-        ]
-        
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        for rule in default_rules:
-            try:
-                cursor.execute('''
-                    INSERT OR IGNORE INTO rules (name, rule_type, condition, threshold, severity)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', rule)
-            except sqlite3.IntegrityError:
-                pass
-        
-        conn.commit()
-        conn.close()
     
     def _create_default_config(self):
         """Initialize default configuration settings"""

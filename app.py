@@ -991,6 +991,92 @@ def toggle_rule(rule_id):
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+@app.route('/api/rules/<int:rule_id>', methods=['PUT'])
+@login_required
+def update_rule(rule_id):
+    """Update an existing rule"""
+    try:
+        data = request.json
+        name = data.get('name')
+        condition = data.get('condition')
+        threshold = data.get('threshold')
+        severity = data.get('severity')
+        
+        if not name or not condition:
+            return jsonify({'success': False, 'error': 'Name and condition required'}), 400
+        
+        # Validate threshold
+        validation_errors = smart_alert_engine.add_rule_validation({
+            'name': name, 'condition': condition, 'threshold': threshold, 'severity': severity
+        })
+        if validation_errors:
+            return jsonify({'success': False, 'error': '; '.join(validation_errors)}), 400
+        
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        # Check if rule exists
+        cursor.execute('SELECT id FROM rules WHERE id = ?', (rule_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'success': False, 'error': 'Rule not found'}), 404
+        
+        # Update rule
+        cursor.execute('''
+            UPDATE rules 
+            SET name = ?, condition = ?, threshold = ?, severity = ?
+            WHERE id = ?
+        ''', (name, condition, threshold, severity, rule_id))
+        
+        conn.commit()
+        conn.close()
+        
+        db.add_event(
+            event_type='rule_updated',
+            severity='info',
+            description=f'Rule updated: {name}'
+        )
+        
+        alert_engine.reload_rules()
+        
+        return jsonify({'success': True, 'rule_id': rule_id})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/rules/conditions', methods=['GET'])
+@login_required
+def get_condition_metadata():
+    """Return metadata about all available conditions for the frontend"""
+    try:
+        from rules.condition_metadata import CONDITION_METADATA
+        return jsonify({
+            'success': True,
+            'data': CONDITION_METADATA
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/rules/validate', methods=['POST'])
+@login_required
+def validate_rule_threshold():
+    """Validate a threshold value for a given condition (frontend use)"""
+    try:
+        from rules.condition_metadata import validate_threshold_for_condition
+        
+        data = request.json
+        condition = data.get('condition')
+        threshold = data.get('threshold')
+        
+        is_valid, message = validate_threshold_for_condition(condition, threshold)
+        
+        return jsonify({
+            'success': True,
+            'valid': is_valid,
+            'message': message
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/rules/test', methods=['POST'])

@@ -33,7 +33,7 @@
 }
 
 .active_scanning {
-    font-size: 20px;
+    font-size: 10px;
     animation: activeScanning 1.5s infinite alternate;
     text-shadow: 0 0 8px currentColor;
 }
@@ -58,8 +58,8 @@
 }
 
 .active_scanning_smooth {
-    font-size: 30px;
-    animation: smoothScanning 1.3s infinite;
+    font-size: 10px;
+    animation: smoothScanning 0.3s infinite;
 }
 
 @keyframes smoothScanning {
@@ -79,8 +79,8 @@
 
 .active_scanning {
     display: inline-block;
-    width: 20px;
-    height: 20px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
     animation: dotPulse 2s infinite;
 }
