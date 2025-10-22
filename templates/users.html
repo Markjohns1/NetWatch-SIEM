@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}{{ gettext('user_management') }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-white">{{ gettext('user_management') }}</h1>
+            <p class="text-slate-400">{{ gettext('manage_system_users') }}</p>
+        </div>
+        <button onclick="showAddUserModal()" 
+                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+            <i data-feather="user-plus" class="w-4 h-4"></i>
+            <span>{{ gettext('add_user') }}</span>
+        </button>
+    </div>
+
+    <!-- Users Table -->
+    <div class="cyber-card rounded-lg overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-slate-800/50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                            {{ gettext('user') }}
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                            {{ gettext('role') }}
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                            {{ gettext('status') }}
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                            {{ gettext('last_login') }}
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                            {{ gettext('actions') }}
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="usersTableBody" class="divide-y divide-slate-700">
+                    <!-- Users will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Activity Log -->
+    <div class="cyber-card rounded-lg p-6">
+        <h2 class="text-lg font-medium text-white mb-4">{{ gettext('recent_activity') }}</h2>
+        <div id="activityLog" class="space-y-2">
+            <!-- Activity will be loaded here -->
+        </div>
+    </div>
+</div>
+
+<!-- Add User Modal -->
+<div id="addUserModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50">
+    <div class="cyber-card rounded-lg p-6 w-full max-w-md mx-4">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium text-white">{{ gettext('add_new_user') }}</h3>
+            <button onclick="hideAddUserModal()" class="text-slate-400 hover:text-white">
+                <i data-feather="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+
+        <form id="addUserForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-2">{{ gettext('username') }}</label>
+                <input type="text" id="newUsername" required
+                       class="w-full px-3 py-2 bg-slate-800/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-2">{{ gettext('email') }}</label>
+                <input type="email" id="newEmail" required
+                       class="w-full px-3 py-2 bg-slate-800/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-2">{{ gettext('password') }}</label>
+                <input type="password" id="newPassword" required
+                       class="w-full px-3 py-2 bg-slate-800/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-2">{{ gettext('role') }}</label>
+                <select id="newRole" required
+                        class="w-full px-3 py-2 bg-slate-800/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="viewer">{{ gettext('viewer') }}</option>
+                    <option value="operator">{{ gettext('operator') }}</option>
+                    <option value="analyst">{{ gettext('analyst') }}</option>
+                    <option value="admin">{{ gettext('admin') }}</option>
+                </select>
+            </div>
+
+            <div class="flex space-x-3 pt-4">
+                <button type="submit" 
+                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition-colors">
+                    {{ gettext('create_user') }}
+                </button>
+                <button type="button" onclick="hideAddUserModal()"
+                        class="flex-1 bg-slate-600 hover:bg-slate-700 text-white py-2 rounded-lg transition-colors">
+                    {{ gettext('cancel') }}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+let users = [];
+let activity = [];
+
+// Load users and activity
+async function loadUsers() {
+    try {
+        const response = await fetch('/api/users');
+        const data = await response.json();
+        
+        if (data.success) {
+            users = data.data;
+            renderUsers();
+        }
+    } catch (error) {
+        console.error('Error loading users:', error);
+    }
+}
+
+async function loadActivity() {
+    try {
+        const response = await fetch('/api/users/activity');
+        const data = await response.json();
+        
+        if (data.success) {
+            activity = data.data;
+            renderActivity();
+        }
+    } catch (error) {
+        console.error('Error loading activity:', error);
+    }
+}
+
+function renderUsers() {
+    const tbody = document.getElementById('usersTableBody');
+    tbody.innerHTML = users.map(user => `
+        <tr class="hover:bg-slate-800/30">
+            <td class="px-6 py-4 whitespace-nowrap">
+                <div>
+                    <div class="text-sm font-medium text-white">${user.username}</div>
+                    <div class="text-sm text-slate-400">${user.email}</div>
+                </div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+                <span class="px-2 py-1 text-xs font-medium rounded-full ${
+                    user.role === 'admin' ? 'bg-red-500/20 text-red-400' :
+                    user.role === 'analyst' ? 'bg-purple-500/20 text-purple-400' :
+                    user.role === 'operator' ? 'bg-blue-500/20 text-blue-400' :
+                    'bg-green-500/20 text-green-400'
+                }">
+                    ${user.role}
+                </span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+                <span class="px-2 py-1 text-xs font-medium rounded-full ${
+                    user.is_active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                }">
+                    ${user.is_active ? 'Active' : 'Inactive'}
+                </span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-400">
+                ${user.last_login ? new Date(user.last_login).toLocaleString() : 'Never'}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                <div class="flex space-x-2">
+                    <button onclick="editUser(${user.id})" 
+                            class="text-blue-400 hover:text-blue-300">
+                        <i data-feather="edit" class="w-4 h-4"></i>
+                    </button>
+                    <button onclick="toggleUserStatus(${user.id}, ${!user.is_active})" 
+                            class="${user.is_active ? 'text-red-400 hover:text-red-300' : 'text-green-400 hover:text-green-300'}">
+                        <i data-feather="${user.is_active ? 'user-x' : 'user-check'}" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+    
+    feather.replace();
+}
+
+function renderActivity() {
+    const container = document.getElementById('activityLog');
+    container.innerHTML = activity.slice(0, 10).map(act => `
+        <div class="flex items-center space-x-3 p-2 rounded-lg bg-slate-800/30">
+            <div class="w-2 h-2 rounded-full bg-blue-400"></div>
+            <div class="flex-1">
+                <div class="text-sm text-white">${act.username} - ${act.action}</div>
+                <div class="text-xs text-slate-400">${new Date(act.timestamp).toLocaleString()}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Modal functions
+function showAddUserModal() {
+    document.getElementById('addUserModal').classList.remove('hidden');
+    document.getElementById('addUserModal').classList.add('flex');
+}
+
+function hideAddUserModal() {
+    document.getElementById('addUserModal').classList.add('hidden');
+    document.getElementById('addUserModal').classList.remove('flex');
+    document.getElementById('addUserForm').reset();
+}
+
+// Add user form
+document.getElementById('addUserForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const formData = {
+        username: document.getElementById('newUsername').value,
+        email: document.getElementById('newEmail').value,
+        password: document.getElementById('newPassword').value,
+        role: document.getElementById('newRole').value
+    };
+    
+    try {
+        const response = await fetch('/api/users', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            hideAddUserModal();
+            loadUsers();
+            loadActivity();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error creating user:', error);
+        alert('Error creating user');
+    }
+});
+
+// User actions
+async function toggleUserStatus(userId, newStatus) {
+    try {
+        const response = await fetch(`/api/users/${userId}/status`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ is_active: newStatus })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            loadUsers();
+            loadActivity();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error updating user status:', error);
+        alert('Error updating user status');
+    }
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    loadUsers();
+    loadActivity();
+    
+    // Refresh every 30 seconds
+    setInterval(() => {
+        loadUsers();
+        loadActivity();
+    }, 30000);
+});
+</script>
+{% endblock %}
