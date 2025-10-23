@@ -377,34 +377,99 @@ class DeviceScanner:
         return enriched_devices
 
     def _adaptive_scan(self, network_info):
-        """Silent adaptive scanning"""
+        """Enhanced adaptive scanning with multiple methods"""
         all_devices = []
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        # Try multiple scanning approaches for better coverage
+        scan_methods = [
+            ('ping_sweep', self.ping_sweep),
+            ('arp_scan', lambda: self.arp_scan(network_info['network_range'])),
+            ('aggressive_ping', lambda: self._aggressive_ping_scan(network_info))
+        ]
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             future_to_method = {}
             
-            for method_name in network_info['optimal_scan_methods']:
-                if method_name == 'arp_scan':
-                    future = executor.submit(self.arp_scan, network_info['network_range'])
-                elif method_name == 'ping_sweep':
-                    future = executor.submit(self.ping_sweep, network_info)
-                else:
-                    continue
-                    
+            for method_name, method_func in scan_methods:
+                future = executor.submit(method_func)
                 future_to_method[future] = method_name
 
-            for future in concurrent.futures.as_completed(future_to_method, timeout=60):
+            for future in concurrent.futures.as_completed(future_to_method, timeout=90):
                 method_name = future_to_method[future]
                 try:
-                    devices = future.result(timeout=2)
+                    devices = future.result(timeout=5)
                     if devices:
                         for device in devices:
-                            if not any(d['ip'] == device['ip'] for d in all_devices):
+                            # Avoid duplicates by IP
+                            if not any(d.get('ip') == device.get('ip') for d in all_devices):
                                 all_devices.append(device)
-                except:
+                except Exception as e:
+                    if self.verbose:
+                        print(f"Scan method {method_name} failed: {e}")
                     pass  # Silent failure
         
         return all_devices
+    
+    def _aggressive_ping_scan(self, network_info):
+        """More aggressive ping scanning for mobile devices"""
+        devices = []
+        
+        try:
+            network = ipaddress.ip_network(network_info['network_range'])
+            
+            # Scan more hosts with shorter timeouts
+            max_hosts = min(150, network.num_addresses - 2)
+            targets = [str(ip) for ip in list(network.hosts())[:max_hosts]]
+            
+            # Use more threads for faster scanning
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+                future_to_ip = {
+                    executor.submit(self._fast_ping, ip): ip 
+                    for ip in targets
+                }
+                
+                for future in concurrent.futures.as_completed(future_to_ip, timeout=45):
+                    ip = future_to_ip[future]
+                    try:
+                        result = future.result()
+                        if result:
+                            devices.append(result)
+                    except Exception:
+                        continue
+                    
+        except Exception as e:
+            if self.verbose:
+                print(f"Aggressive ping scan error: {e}")
+        
+        return devices
+    
+    def _fast_ping(self, ip):
+        """Fast ping with minimal timeout for mobile devices"""
+        try:
+            if os.name == 'nt':
+                # Very fast Windows ping
+                result = subprocess.run(['ping', '-n', '1', '-w', '200', ip], 
+                                      capture_output=True, text=True, timeout=1)
+            else:
+                result = subprocess.run(['ping', '-c', '1', '-W', '1', ip], 
+                                      capture_output=True, text=True, timeout=1)
+            
+            if (result.returncode == 0 and 
+                ("Reply from" in result.stdout or "1 received" in result.stdout or 
+                 "bytes from" in result.stdout or "ttl=" in result.stdout.lower())):
+                
+                return {
+                    'ip': ip,
+                    'mac': 'Unknown',
+                    'vendor': 'Unknown',
+                    'hostname': self.get_hostname(ip),
+                    'discovery_method': 'aggressive_ping'
+                }
+        except Exception:
+            pass
+        
+        return None
 
     def scan_network(self):
         return self.smart_scan()
@@ -527,44 +592,71 @@ class DeviceScanner:
         return devices
 
     def ping_sweep(self, network_info):
-        """Silent ping sweep"""
+        """Enhanced ping sweep with better device detection"""
         devices = []
         
         try:
             network = ipaddress.ip_network(network_info['network_range'])
             
-            max_hosts = min(30, network.num_addresses - 2)
+            # Increase scan range for better coverage
+            max_hosts = min(100, network.num_addresses - 2)  # Increased from 30 to 100
             targets = [str(ip) for ip in list(network.hosts())[:max_hosts]]
             
-            for ip in targets:
-                try:
-                    if os.name == 'nt':
-                        # Windows ping with proper timeout
-                        result = subprocess.run(['ping', '-n', '1', '-w', '1000', ip], 
-                                              capture_output=True, text=True, timeout=3)
-                    else:
-                        result = subprocess.run(['ping', '-c', '1', '-W', '1', ip], 
-                                              capture_output=True, text=True, timeout=3)
+            # Use concurrent scanning for better performance
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                future_to_ip = {
+                    executor.submit(self._ping_single_host, ip): ip 
+                    for ip in targets
+                }
+                
+                for future in concurrent.futures.as_completed(future_to_ip, timeout=30):
+                    ip = future_to_ip[future]
+                    try:
+                        result = future.result()
+                        if result:
+                            devices.append(result)
+                    except Exception as e:
+                        if self.verbose:
+                            print(f"Ping failed for {ip}: {e}")
+                        continue
                     
-                    # Check for successful ping response
-                    if (result.returncode == 0 and 
-                        ("Reply from" in result.stdout or "1 received" in result.stdout or 
-                         "bytes from" in result.stdout or "ttl=" in result.stdout.lower())):
-                        devices.append({
-                            'ip': ip,
-                            'mac': 'Unknown',
-                            'vendor': 'Unknown',
-                            'discovery_method': 'ping_sweep'
-                        })
-                except Exception as e:
-                    if self.verbose:
-                        print(f"Ping failed for {ip}: {e}")
-                    continue
-                    
-        except:
-            pass
+        except Exception as e:
+            if self.verbose:
+                print(f"Ping sweep error: {e}")
         
         return devices
+    
+    def _ping_single_host(self, ip):
+        """Ping a single host with enhanced detection"""
+        try:
+            if os.name == 'nt':
+                # Windows ping with shorter timeout for faster scanning
+                result = subprocess.run(['ping', '-n', '1', '-w', '500', ip], 
+                                      capture_output=True, text=True, timeout=2)
+            else:
+                result = subprocess.run(['ping', '-c', '1', '-W', '1', ip], 
+                                      capture_output=True, text=True, timeout=2)
+            
+            # Check for successful ping response
+            if (result.returncode == 0 and 
+                ("Reply from" in result.stdout or "1 received" in result.stdout or 
+                 "bytes from" in result.stdout or "ttl=" in result.stdout.lower())):
+                
+                # Try to get hostname for better identification
+                hostname = self.get_hostname(ip)
+                
+                return {
+                    'ip': ip,
+                    'mac': 'Unknown',
+                    'vendor': 'Unknown',
+                    'hostname': hostname,
+                    'discovery_method': 'ping_sweep'
+                }
+        except Exception:
+            pass
+        
+        return None
 
     def get_hostname(self, ip):
         """Enhanced hostname resolution with multiple fallback methods"""

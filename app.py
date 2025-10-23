@@ -1,7 +1,7 @@
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for, flash
 from flask_socketio import SocketIO, emit, disconnect
 from functools import wraps
-from database.models import Database
+from database.models import Database, get_kenya_time
 from scanner.device_scanner import DeviceScanner
 from rules.alert_engine import AlertEngine
 from rules.smart_alert_engine import SmartAlertEngine
@@ -123,12 +123,28 @@ def _scanner_loop(app):
                 for device_dict in devices:
                     conn = db.get_connection()
                     cursor = conn.cursor()
-                    cursor.execute('SELECT id, status FROM devices WHERE mac_address = ?', (device_dict['mac'],))
+                    # Get existing device info including device_name
+                    cursor.execute('SELECT id, status, device_name, hostname, vendor FROM devices WHERE mac_address = ?', (device_dict['mac'],))
                     result = cursor.fetchone()
 
                     if result:
-                        device_id, old_status = result
+                        device_id, old_status, existing_name, existing_hostname, existing_vendor = result
                         current_devices.add(device_id)
+                        
+                        # Update device information while preserving user-set name
+                        kenya_time = get_kenya_time()
+                        cursor.execute('''
+                            UPDATE devices 
+                            SET ip_address = ?, hostname = ?, vendor = ?, status = 'online', last_seen = ?
+                            WHERE id = ?
+                        ''', (
+                            device_dict['ip'], 
+                            device_dict.get('hostname') or existing_hostname,
+                            device_dict.get('vendor') or existing_vendor,
+                            kenya_time,
+                            device_id
+                        ))
+                        conn.commit()
                         
                         if old_status == 'offline':
                             device_status_changes.append({
@@ -142,7 +158,13 @@ def _scanner_loop(app):
                         
                         smart_alert_engine.process_smart_alerts(device_id)
                     else:
-                        device_id = device_dict.get('device_id')
+                        # Add new device
+                        device_id = db.add_device(
+                            device_dict['ip'], 
+                            device_dict['mac'], 
+                            device_dict.get('hostname'),
+                            device_dict.get('vendor')
+                        )
                         if device_id:
                             current_devices.add(device_id)
                             device_status_changes.append({
