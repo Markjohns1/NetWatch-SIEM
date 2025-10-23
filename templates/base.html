@@ -127,6 +127,12 @@
                     <i data-feather="settings"></i>
                     <span>System Configuration</span>
                 </a>
+                {% if session.get('is_admin') %}
+                <a href="/users" class="nav-item {% if request.path == '/users' %}active{% endif %}">
+                    <i data-feather="users"></i>
+                    <span>User Management</span>
+                </a>
+                {% endif %}
             </nav>
             
             <div class="mt-8 cyber-card rounded-lg p-4">
@@ -185,6 +191,12 @@
                     <i data-feather="bar-chart-2"></i>
                     <span>Analytics</span>
                 </a>
+                {% if session.get('is_admin') %}
+                <a href="{{ url_for('users_page') }}" class="nav-item {% if request.path == '/users' %}active{% endif %}">
+                    <i data-feather="users"></i>
+                    <span>User Management</span>
+                </a>
+                {% endif %}
             </nav>
             
             <div class="mt-8 cyber-card rounded-lg p-4">

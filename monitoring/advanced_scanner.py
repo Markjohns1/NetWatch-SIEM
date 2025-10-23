@@ -20,8 +20,15 @@ import nmap
 from scapy.all import *
 from scapy.layers.inet import IP, ICMP, TCP, UDP
 from scapy.layers.l2 import ARP, Ether
-import requests
-import dns.resolver
+try:
+    import requests
+except ImportError:
+    requests = None
+
+try:
+    import dns.resolver
+except ImportError:
+    dns = None
 
 logger = logging.getLogger(__name__)
 

@@ -4,10 +4,17 @@
     box-sizing: border-box;
 }
 
+html {
+    scroll-behavior: smooth;
+}
+
 body {
     font-family: 'JetBrains Mono', monospace;
     background-color: #020617;
     color: #e2e8f0;
+    line-height: 1.6;
+    overflow-x: hidden;
+    min-height: 100vh;
 }
 
 .nav-item {
@@ -188,12 +195,14 @@ input[type="checkbox"] {
         display: block;
         overflow-x: auto;
         white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
     }
     
     table th,
     table td {
         padding: 0.5rem;
         font-size: 0.8rem;
+        min-width: 100px;
     }
     
     input[type="text"],
@@ -201,6 +210,40 @@ input[type="checkbox"] {
     input[type="password"] {
         padding: 0.5rem;
         font-size: 0.875rem;
+    }
+    
+    /* Grid responsiveness */
+    .grid {
+        grid-template-columns: 1fr !important;
+        gap: 1rem;
+    }
+    
+    .grid-cols-1 {
+        grid-template-columns: repeat(1, minmax(0, 1fr));
+    }
+    
+    .grid-cols-2 {
+        grid-template-columns: repeat(1, minmax(0, 1fr));
+    }
+    
+    .grid-cols-3 {
+        grid-template-columns: repeat(1, minmax(0, 1fr));
+    }
+    
+    .grid-cols-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    
+    /* Card responsiveness */
+    .cyber-card {
+        margin: 0.5rem;
+        padding: 1rem;
+    }
+    
+    /* Modal responsiveness */
+    .modal {
+        margin: 1rem;
+        max-width: calc(100vw - 2rem);
     }
 }
 

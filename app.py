@@ -7,8 +7,13 @@ from rules.alert_engine import AlertEngine
 from rules.smart_alert_engine import SmartAlertEngine
 from flask.signals import appcontext_pushed
 from i18n import I18nManager
+from security import SecurityManager, require_auth, validate_input, sanitize_input
+from security.schemas import *
+from models import UserManager
+from monitoring import AdvancedNetworkScanner, TrafficAnalyzer
 import threading
 import time
+import asyncio
 from datetime import datetime, timedelta
 import os
 from scanner.device_scanner import Colors
@@ -22,6 +27,9 @@ logging.getLogger('engineio').setLevel(logging.ERROR)
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'netwatch-siem-secret-key-2024')
 app.logger.setLevel(logging.ERROR)
+
+# Initialize security manager
+security_manager = SecurityManager(app)
 
 socketio = SocketIO(
     app, 
@@ -63,6 +71,13 @@ def login_required(f):
 
 db = Database()
 
+# Initialize user manager
+user_manager = UserManager(db)
+
+# Initialize enhanced monitoring systems
+advanced_scanner = AdvancedNetworkScanner(db)
+traffic_analyzer = TrafficAnalyzer(db)
+
 db.set_config('scanning_active', True)
 print(f"{Colors.CYAN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Auto-enabling network scanner...")
 
@@ -95,7 +110,12 @@ def _scanner_loop(app):
                 current_interval = db.get_config('scan_interval') or 60
                 SCAN_INTERVAL = current_interval
                 
-                devices = scanner.scan_network()
+                # Use enhanced scanner for better device detection
+                try:
+                    devices = asyncio.run(advanced_scanner.comprehensive_network_scan())
+                except Exception as e:
+                    print(f"{Colors.YELLOW}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Enhanced scan failed, falling back to basic scan: {e}")
+                    devices = scanner.scan_network()
 
                 current_devices = set()
                 device_status_changes = []
@@ -208,16 +228,53 @@ appcontext_pushed.connect(_on_appcontext_pushed, app)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    client_ip = request.remote_addr
+    
+    # Check if IP is locked out
+    if security_manager.is_locked_out(client_ip):
+        return render_template('login.html', error='Too many failed attempts. Please try again later.')
+    
     if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
         
-        if username == VALID_USERNAME and password == VALID_PASSWORD:
+        # Sanitize input
+        username = sanitize_input(username)
+        
+        # Validate input
+        if not username or not password:
+            security_manager.record_failed_attempt(client_ip)
+            return render_template('login.html', error='Username and password are required')
+        
+        if len(username) > 50 or len(password) > 100:
+            security_manager.record_failed_attempt(client_ip)
+            return render_template('login.html', error='Invalid input length')
+        
+        # Authenticate user using user manager
+        auth_result = user_manager.authenticate_user(username, password, client_ip)
+        
+        if auth_result['success']:
+            user = auth_result['user']
+            
+            # Clear failed attempts on successful login
+            security_manager.clear_failed_attempts(client_ip)
+            
+            # Create secure session
+            session_token = user_manager.create_session(user['id'], client_ip, request.headers.get('User-Agent'))
+            
             session['logged_in'] = True
-            session['username'] = username
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            session['role'] = user['role']
+            session['is_admin'] = user['role'] == 'admin'
+            session['last_activity'] = datetime.now().isoformat()
+            session['csrf_token'] = security_manager.generate_csrf_token()
+            session['session_token'] = session_token
+            
             return redirect(url_for('index'))
         else:
-            return render_template('login.html', error='Invalid username or password')
+            security_manager.record_failed_attempt(client_ip)
+            return render_template('login.html', error=auth_result['error'])
     
     if 'logged_in' in session:
         return redirect(url_for('index'))
@@ -227,6 +284,14 @@ def login():
 
 @app.route('/logout')
 def logout():
+    # Log logout event
+    if 'username' in session:
+        db.add_event(
+            event_type='user_logout',
+            severity='info',
+            description=f'User {session["username"]} logged out'
+        )
+    
     session.clear()
     return redirect(url_for('login'))
 
@@ -307,10 +372,17 @@ def get_active_devices():
 
 
 @app.route('/api/devices/<int:device_id>/trust', methods=['POST'])
-@login_required
+@require_auth
 def toggle_device_trust(device_id):
     try:
-        data = request.json
+        data = request.json or {}
+        data = sanitize_input(data)
+        
+        # Validate input
+        errors = validate_input(data, DEVICE_TRUST_SCHEMA)
+        if errors:
+            return jsonify({'success': False, 'error': '; '.join(errors)}), 400
+        
         is_trusted = data.get('is_trusted', 0)
         
         conn = db.get_connection()
@@ -893,6 +965,45 @@ def analytics_page():
     return render_template('analytics.html')
 
 
+@app.route('/users')
+@require_auth
+def users_page():
+    return render_template('users.html')
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        role = request.form.get('role', 'viewer')
+        
+        # Validate input
+        if not username or len(username) < 3:
+            return render_template('register.html', error='Username must be at least 3 characters')
+        
+        if not email or '@' not in email:
+            return render_template('register.html', error='Valid email address required')
+        
+        if not password or len(password) < 8:
+            return render_template('register.html', error='Password must be at least 8 characters')
+        
+        if password != confirm_password:
+            return render_template('register.html', error='Passwords do not match')
+        
+        # Register user
+        result = user_manager.register_user(username, email, password, role)
+        
+        if result['success']:
+            return render_template('login.html', success='Registration successful! Please log in.')
+        else:
+            return render_template('register.html', error=result['error'])
+    
+    return render_template('register.html')
+
+
 @app.route('/api/rules', methods=['GET'])
 @login_required
 def get_rules():
@@ -1098,6 +1209,81 @@ def test_rule():
         result = smart_alert_engine.test_rule(rule_data, test_device_id)
         return jsonify({'success': True, 'result': result})
         
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# User Management API Endpoints
+@app.route('/api/users', methods=['GET'])
+@require_auth
+def get_users():
+    try:
+        users = user_manager.get_all_users()
+        return jsonify({'success': True, 'data': users})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/users', methods=['POST'])
+@require_auth
+def create_user():
+    try:
+        data = request.json or {}
+        data = sanitize_input(data)
+        
+        # Validate input
+        errors = validate_input(data, {
+            'username': {'type': 'str', 'required': True, 'min_length': 3, 'max_length': 50},
+            'email': {'type': 'str', 'required': True, 'max_length': 100},
+            'password': {'type': 'str', 'required': True, 'min_length': 8},
+            'role': {'type': 'str', 'required': True}
+        })
+        
+        if errors:
+            return jsonify({'success': False, 'error': '; '.join(errors)}), 400
+        
+        result = user_manager.register_user(
+            data['username'],
+            data['email'],
+            data['password'],
+            data['role']
+        )
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/users/<int:user_id>/status', methods=['PUT'])
+@require_auth
+def update_user_status(user_id):
+    try:
+        data = request.json or {}
+        is_active = data.get('is_active', True)
+        
+        if is_active:
+            # Reactivate user
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute('UPDATE users SET is_active = 1 WHERE id = ?', (user_id,))
+            conn.commit()
+            conn.close()
+        else:
+            # Deactivate user
+            user_manager.deactivate_user(user_id)
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/users/activity', methods=['GET'])
+@require_auth
+def get_user_activity():
+    try:
+        limit = request.args.get('limit', 100, type=int)
+        activity = user_manager.get_user_activity(limit=limit)
+        return jsonify({'success': True, 'data': activity})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

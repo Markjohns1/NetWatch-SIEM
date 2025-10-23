@@ -118,8 +118,7 @@ class UserManager:
             email = 'admin@netwatch.local'
             password = 'NetWatch2024!'  # Should be changed on first login
             
-            salt = secrets.token_hex(32)
-            password_hash = self._hash_password(password, salt)
+            password_hash, salt = self._hash_password(password)
             
             cursor.execute('''
                 INSERT INTO users (username, email, password_hash, salt, role, is_active, is_verified)
@@ -177,6 +176,8 @@ class UserManager:
             
             # Hash password
             password_hash, salt = self._hash_password(password)
+            if isinstance(password_hash, tuple):
+                password_hash = password_hash[0]
             
             # Insert user
             cursor.execute('''

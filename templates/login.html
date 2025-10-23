@@ -55,8 +55,14 @@
             </button>
         </form>
 
-        <div class="mt-6 text-center text-xs text-slate-500">
-            <p>Network Intelligence & Threat Detection</p>
+        <div class="mt-6 text-center">
+            <p class="text-slate-400 text-sm mb-2">
+                Don't have an account?
+                <a href="{{ url_for('register') }}" class="text-blue-400 hover:text-blue-300 font-medium">
+                    Register here
+                </a>
+            </p>
+            <p class="text-xs text-slate-500">Network Intelligence & Threat Detection</p>
         </div>
     </div>
 

@@ -5,21 +5,23 @@ Creator: JOHN O. MARK
 Overview
 --------
 
-NetWatch SIEM is a Flask-based network security monitoring system designed for continuous network surveillance, device discovery, and threat detection. The system provides real-time visibility into network activity through automated scanning, intelligent alerting, and comprehensive event logging.
+NetWatch SIEM is an enterprise-grade Flask-based Security Information and Event Management (SIEM) system designed for comprehensive network surveillance, advanced threat detection, and real-time security monitoring. The system provides deep visibility into network activity through multi-method device discovery, intelligent threat analysis, and comprehensive security event management.
 
 
 Key Capabilities
 
-• Real-time Device Discovery - Automatic detection and tracking of network devices using ARP scanning
-• Smart Alert Engine - Advanced rule processing with false positive elimination and context-aware evaluation
-• Intelligent Alerting - Rule-based security alerts with configurable thresholds and severity levels
-• Event Logging - Comprehensive activity monitoring with timezone-aware timestamps
-• Trust Management - Device classification system to reduce alert noise
-• Analytics Dashboard - Real-time network health metrics, device trends, and alert patterns
+• Advanced Multi-Method Device Discovery - Comprehensive network scanning using ARP, ping sweep, port scanning, passive discovery, and traffic analysis
+• Real-Time Traffic Analysis - Deep packet inspection with threat detection, anomaly analysis, and connection tracking
+• Enterprise Security Features - Multi-user authentication, role-based access control, and secure session management
+• Smart Alert Engine - Advanced rule processing with false positive elimination, context-aware evaluation, and machine learning
+• Intelligent Threat Detection - Real-time detection of port scanning, brute force attacks, DDoS, and suspicious network behavior
+• Comprehensive User Management - Secure user registration, role assignment, and activity monitoring
+• Advanced Analytics Dashboard - Real-time network health metrics, device trends, threat patterns, and security analytics
 • International Support - Multi-language interface (English, Spanish, French, German, Chinese)
-• Rule Testing - Live rule validation against real devices before deployment
-• RESTful API - Complete programmatic access to all system functions
-• Offline Operation - Fully functional without internet connectivity
+• Rule Testing & Validation - Live rule validation against real devices with comprehensive testing framework
+• RESTful API - Complete programmatic access with secure authentication and input validation
+• Performance Optimization - Advanced caching, database optimization, and scalable architecture
+• Offline Operation - Fully functional without internet connectivity with local data storage
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -29,21 +31,27 @@ Technical Specifications
 
 Technology Stack
 
-Backend Framework    : Flask (Python 3.11)
-Database            : SQLite 3 (netwatch.db)
-Frontend            : HTML5, Vanilla JavaScript, Tailwind CSS
-Network Scanning    : Scapy (requires elevated privileges)
-Analytics Engine    : Chart.js for data visualization
+Backend Framework    : Flask (Python 3.11) with async support
+Database            : SQLite 3 (netwatch.db) with optimized queries
+Frontend            : HTML5, Vanilla JavaScript, Tailwind CSS (responsive design)
+Network Scanning    : Scapy, Nmap, psutil (multi-method discovery)
+Traffic Analysis    : Real-time packet capture and analysis
+Security            : PBKDF2 password hashing, session management, input validation
+Analytics Engine    : Chart.js for data visualization with real-time updates
 Internationalization: Custom i18n system with JSON translations
-Architecture        : Service-oriented modular design with smart alert processing
+Architecture        : Service-oriented modular design with advanced monitoring
+Caching             : In-memory caching with TTL support
+Threat Detection    : Machine learning-based anomaly detection
 
 
 System Requirements
 
 • Python 3.11 or higher
-• Root/Administrator privileges (for ARP scanning)
-• Local network access
-• 50MB minimum disk space
+• Root/Administrator privileges (for advanced network scanning and packet capture)
+• Local network access with packet capture capabilities
+• 100MB minimum disk space (for logs, cache, and database)
+• 512MB RAM minimum (1GB recommended for large networks)
+• Network interface with promiscuous mode support (for traffic analysis)
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -77,7 +85,9 @@ Quick Start
 5. Access the dashboard
    
    Navigate to http://localhost:5000
-   Default credentials: Mark / lizzyjohn (development only)
+   Default admin credentials: admin / NetWatch2024! (change immediately)
+   
+   For new installations, register additional users at /register
 
 
 Environment Variables
@@ -87,6 +97,48 @@ ADMIN_PASSWORD  : Admin login password (default: lizzyjohn)
 SESSION_SECRET  : Flask session encryption key (auto-generated)
 
 ⚠️  WARNING: Always configure custom credentials for production deployments.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Enhanced Features (Version 3.0)
+-------------------------------
+
+Multi-User Authentication System
+
+• Secure User Registration - PBKDF2 password hashing with salt
+• Role-Based Access Control - Admin, Operator, Analyst, Viewer roles
+• Session Management - Secure session tokens with expiration
+• User Activity Logging - Comprehensive audit trail
+• Brute Force Protection - Account lockout after failed attempts
+• Input Validation - Comprehensive data sanitization and validation
+
+Advanced Network Monitoring
+
+• Multi-Method Device Discovery - ARP, ping, port scan, passive discovery
+• Real-Time Traffic Analysis - Deep packet inspection and analysis
+• Threat Detection Engine - Port scanning, brute force, DDoS detection
+• Anomaly Detection - Machine learning-based behavioral analysis
+• Connection Tracking - Real-time network connection monitoring
+• Bandwidth Monitoring - Per-device and network-wide traffic analysis
+
+Performance & Security Enhancements
+
+• Advanced Caching System - In-memory caching with TTL support
+• Database Optimization - Optimized queries and connection pooling
+• Input Sanitization - XSS and injection attack prevention
+• Rate Limiting - API endpoint protection
+• CSRF Protection - Cross-site request forgery prevention
+• Secure Headers - Security-focused HTTP headers
+
+User Interface Improvements
+
+• Responsive Design - Mobile-first responsive layout
+• Enhanced Navigation - Role-based menu system
+• Real-Time Updates - WebSocket-based live data updates
+• Advanced Analytics - Comprehensive network health metrics
+• User Management Interface - Complete user administration panel
+• Modern UI Components - Glassmorphism effects and animations
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
