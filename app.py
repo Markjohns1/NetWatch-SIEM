@@ -215,7 +215,7 @@ def start_background_scanner():
     if scanning_enabled:
         scanner_thread = threading.Thread(target=_scanner_loop, args=(app,), daemon=True)
         scanner_thread.start()
-        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}✓ Background scanning: ACTIVE{Colors.RESET}\n")
+        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}[OK] Background scanning: ACTIVE{Colors.RESET}\n")
     else:
         print(f"{Colors.YELLOW}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.YELLOW}⚠ Background scanning: DISABLED{Colors.RESET}\n")
 

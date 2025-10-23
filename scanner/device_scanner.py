@@ -354,7 +354,7 @@ class DeviceScanner:
         print(f"{Colors.CYAN}|{Colors.RESET}{' ' * (width - 2)}{Colors.CYAN}|{Colors.RESET}")
         print(f"{Colors.CYAN}{'=' * width}{Colors.RESET}\n")
         
-        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}✓ NetWatch SIEM initialized successfully{Colors.RESET}")
+        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}[OK] NetWatch SIEM initialized successfully{Colors.RESET}")
         print(f"{Colors.CYAN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_CYAN}Ready to monitor your network...{Colors.RESET}\n")
         self.banner_shown = True
 
@@ -372,7 +372,7 @@ class DeviceScanner:
         enriched_devices = self._add_network_context(devices, network_info)
         
         # Clean completion message
-        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}✓ Scan completed - Found {len(enriched_devices)} devices{Colors.RESET}          ")
+        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}[OK] Scan completed - Found {len(enriched_devices)} devices{Colors.RESET}          ")
         
         return enriched_devices
 
@@ -613,7 +613,7 @@ class DeviceScanner:
         self.scan_thread = threading.Thread(target=scan_loop, daemon=True)
         self.scan_thread.start()
         
-        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}✓ Continuous scanning started (interval: {interval}s){Colors.RESET}")
+        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}[OK] Continuous scanning started (interval: {interval}s){Colors.RESET}")
 
     def stop_scan(self):
         self.scanning = False
