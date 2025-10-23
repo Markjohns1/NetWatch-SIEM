@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Tuple
 import psutil
 from scapy.all import *
 from scapy.layers.inet import IP, TCP, UDP, ICMP
-from scapy.layers.l2 import ARP, Ether
+from scapy.layers.l2 import ARP, Ether # this is for the ethernet layer which is used to extract the source and destination mac addresses
 import hashlib
 
 logger = logging.getLogger(__name__)

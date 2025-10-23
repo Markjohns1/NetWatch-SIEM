@@ -56,6 +56,20 @@ active_clients = set()
 i18n = I18nManager()
 i18n.init_app(app)
 
+# Make gettext available in all templates
+@app.context_processor
+def inject_i18n():
+    """Inject translation functions into all templates"""
+    def gettext(key):
+        """Get translated text or return key if not found"""
+        try:
+            return i18n.get_text(key)
+        except:
+            # Fallback to readable text if translation fails
+            return key.replace('_', ' ').title()
+    
+    return dict(gettext=gettext)
+
 VALID_USERNAME = os.environ.get('ADMIN_USERNAME', 'Mark')
 VALID_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'lizzyjohn')
 
@@ -1124,6 +1138,8 @@ def toggle_rule(rule_id):
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/rules/<int:rule_id>', methods=['PUT'])
 @login_required
 def update_rule(rule_id):
@@ -1175,6 +1191,7 @@ def update_rule(rule_id):
         return jsonify({'success': True, 'rule_id': rule_id})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/rules/conditions', methods=['GET'])
 @login_required
