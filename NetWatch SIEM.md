@@ -990,6 +990,15 @@ For issues, questions, or contributions:
 Changelog
 ---------
 
+Version 2.1 (October 18, 2025) - BUG FIX RELEASE
+
+Critical Bug Fixes
+    ✓ Fixed 'IPv4Network' object has no attribute 'num_hosts' error
+    ✓ Corrected ipaddress module usage in advanced_scanner.py
+    ✓ Network configuration now properly calculates host counts
+    ✓ Eliminated repeated "Error getting network info" messages
+    ✓ Improved network discovery reliability and stability
+
 Version 2.0 (October 18, 2025) - MAJOR ENHANCEMENT RELEASE
 
 Smart Alert Engine
