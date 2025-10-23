@@ -161,7 +161,7 @@ class AdvancedNetworkScanner:
                 'netmask': primary_interface['netmask'],
                 'broadcast': primary_interface['broadcast'],
                 'network_range': str(network),
-                'host_count': network.num_hosts
+                'host_count': network.num_addresses
             }
             
         except Exception as e:
