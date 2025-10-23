@@ -422,41 +422,109 @@ class DeviceScanner:
             return 'Unknown'
         mac_prefix = mac.upper()[:8]
         return self.mac_vendors.get(mac_prefix, 'Unknown')
+    
+    def _enhance_device_info(self, device):
+        """Enhance device information with better identification"""
+        enhanced = device.copy()
+        
+        # Try to get better hostname
+        if device.get('ip') and not device.get('hostname'):
+            hostname = self.get_hostname(device['ip'])
+            if hostname:
+                enhanced['hostname'] = hostname
+        
+        # Try to identify device type based on IP and hostname
+        device_type = self._identify_device_type(device)
+        enhanced['device_type'] = device_type
+        
+        # Try to get better vendor info
+        if device.get('mac') and device.get('mac') != 'Unknown':
+            vendor = self.get_vendor_from_mac(device['mac'])
+            enhanced['vendor'] = vendor
+        
+        return enhanced
+    
+    def _identify_device_type(self, device):
+        """Identify device type based on available information"""
+        ip = device.get('ip', '')
+        hostname = device.get('hostname', '').lower()
+        mac = device.get('mac', '').upper()
+        
+        # Gateway detection
+        if ip.endswith('.1') or 'gateway' in hostname or 'router' in hostname:
+            return 'Gateway/Router'
+        
+        # Computer detection
+        if any(keyword in hostname for keyword in ['pc', 'computer', 'desktop', 'laptop', 'workstation']):
+            return 'Computer'
+        
+        # Mobile device detection
+        if any(keyword in hostname for keyword in ['phone', 'mobile', 'android', 'iphone']):
+            return 'Mobile Device'
+        
+        # IoT device detection
+        if any(keyword in hostname for keyword in ['iot', 'smart', 'sensor', 'camera']):
+            return 'IoT Device'
+        
+        # Printer detection
+        if any(keyword in hostname for keyword in ['printer', 'print', 'hp-', 'canon', 'epson']):
+            return 'Printer'
+        
+        # Default
+        return 'Unknown Device'
 
     def arp_scan(self, target_ip):
-        """Silent ARP scanning"""
+        """Silent ARP scanning with Windows compatibility"""
         try:
-            try:
-                network = ipaddress.IPv4Network(target_ip)
-                if network.num_addresses > 1024:
-                    base = str(network.network_address).rsplit('.', 1)[0]
-                    target_ip = f"{base}.0/24"
-            except:
-                pass
-            
-            arp = ARP(pdst=target_ip)
-            ether = Ether(dst="ff:ff:ff:ff:ff:ff")
-            packet = ether / arp
-
-            iface = self.network_detector._get_active_interface()
-            if iface == "unknown":
-                return []
-
-            result = srp(packet, iface=iface, timeout=3, retry=1, verbose=0)[0]
-
-            devices = []
-            for sent, received in result:
-                devices.append({
-                    'ip': received.psrc,
-                    'mac': received.hwsrc.upper(),
-                    'vendor': self.get_vendor_from_mac(received.hwsrc),
-                    'discovery_method': 'arp_scan'
-                })
-
-            return devices
-
-        except:
+            # Check if we're on Windows and ARP scanning is likely to fail
+            import platform
+            if platform.system() == "Windows":
+                if self.verbose:
+                    print("Windows detected - ARP scanning may require administrator privileges")
+                # Try ARP scan but don't fail completely
+                try:
+                    return self._attempt_arp_scan(target_ip)
+                except Exception as e:
+                    if self.verbose:
+                        print(f"ARP scan failed: {e}")
+                    return []
+            else:
+                return self._attempt_arp_scan(target_ip)
+        except Exception as e:
+            if self.verbose:
+                print(f"ARP scan error: {e}")
             return []
+    
+    def _attempt_arp_scan(self, target_ip):
+        """Attempt ARP scanning with proper error handling"""
+        try:
+            network = ipaddress.IPv4Network(target_ip)
+            if network.num_addresses > 1024:
+                base = str(network.network_address).rsplit('.', 1)[0]
+                target_ip = f"{base}.0/24"
+        except:
+            pass
+        
+        arp = ARP(pdst=target_ip)
+        ether = Ether(dst="ff:ff:ff:ff:ff:ff")
+        packet = ether / arp
+
+        iface = self.network_detector._get_active_interface()
+        if iface == "unknown":
+            return []
+
+        result = srp(packet, iface=iface, timeout=3, retry=1, verbose=0)[0]
+
+        devices = []
+        for sent, received in result:
+            devices.append({
+                'ip': received.psrc,
+                'mac': received.hwsrc.upper(),
+                'vendor': self.get_vendor_from_mac(received.hwsrc),
+                'discovery_method': 'arp_scan'
+            })
+
+        return devices
 
     def ping_sweep(self, network_info):
         """Silent ping sweep"""
@@ -471,21 +539,26 @@ class DeviceScanner:
             for ip in targets:
                 try:
                     if os.name == 'nt':
-                        result = subprocess.run(['ping', '-n', '1', '-w', '500', ip], 
-                                              capture_output=True, text=True, shell=True, timeout=1)
+                        # Windows ping with proper timeout
+                        result = subprocess.run(['ping', '-n', '1', '-w', '1000', ip], 
+                                              capture_output=True, text=True, timeout=3)
                     else:
                         result = subprocess.run(['ping', '-c', '1', '-W', '1', ip], 
-                                              capture_output=True, text=True, timeout=1)
+                                              capture_output=True, text=True, timeout=3)
                     
-                    if ("Reply from" in result.stdout or "1 received" in result.stdout or 
-                        "bytes from" in result.stdout or "ttl=" in result.stdout.lower()):
+                    # Check for successful ping response
+                    if (result.returncode == 0 and 
+                        ("Reply from" in result.stdout or "1 received" in result.stdout or 
+                         "bytes from" in result.stdout or "ttl=" in result.stdout.lower())):
                         devices.append({
                             'ip': ip,
                             'mac': 'Unknown',
                             'vendor': 'Unknown',
                             'discovery_method': 'ping_sweep'
                         })
-                except:
+                except Exception as e:
+                    if self.verbose:
+                        print(f"Ping failed for {ip}: {e}")
                     continue
                     
         except:
@@ -528,6 +601,10 @@ class DeviceScanner:
         
         for device in devices:
             try:
+                # Enhance device information
+                enhanced_device = self._enhance_device_info(device)
+                device.update(enhanced_device)
+                
                 device['network_context'] = {
                     'network_type': network_info['network_type'],
                     'subnet': network_info['network_range'],
