@@ -330,28 +330,29 @@ class DeviceScanner:
     def _print_startup_banner(self):
         """Clean, beautiful startup banner"""
         width = 80
-        print(f"\n{Colors.CYAN}{'╔' + '═' * (width - 2) + '╗'}{Colors.RESET}")
-        print(f"{Colors.CYAN}║{Colors.RESET}{' ' * (width - 2)}{Colors.CYAN}║{Colors.RESET}")
+        # Use ASCII characters for Windows compatibility
+        print(f"\n{Colors.CYAN}{'=' * width}{Colors.RESET}")
+        print(f"{Colors.CYAN}|{Colors.RESET}{' ' * (width - 2)}{Colors.CYAN}|{Colors.RESET}")
         
         title = "NETWATCH SIEM"
-        print(f"{Colors.CYAN}║{Colors.RESET}{Colors.BRIGHT_CYAN}{Colors.BOLD}{title.center(width - 2)}{Colors.RESET}{Colors.CYAN}║{Colors.RESET}")
+        print(f"{Colors.CYAN}|{Colors.RESET}{Colors.BRIGHT_CYAN}{Colors.BOLD}{title.center(width - 2)}{Colors.RESET}{Colors.CYAN}|{Colors.RESET}")
         
         subtitle = "NETWORK SCANNER"
-        print(f"{Colors.CYAN}║{Colors.RESET}{Colors.MAGENTA}{subtitle.center(width - 2)}{Colors.RESET}{Colors.CYAN}║{Colors.RESET}")
+        print(f"{Colors.CYAN}|{Colors.RESET}{Colors.MAGENTA}{subtitle.center(width - 2)}{Colors.RESET}{Colors.CYAN}|{Colors.RESET}")
         
         tagline = ">>> ACTIVE NETWORK DISCOVERY TOOL <<<"
-        print(f"{Colors.CYAN}║{Colors.RESET}{Colors.GREEN}{tagline.center(width - 2)}{Colors.RESET}{Colors.CYAN}║{Colors.RESET}")
+        print(f"{Colors.CYAN}|{Colors.RESET}{Colors.GREEN}{tagline.center(width - 2)}{Colors.RESET}{Colors.CYAN}|{Colors.RESET}")
         
-        print(f"{Colors.CYAN}║{Colors.RESET}{' ' * (width - 2)}{Colors.CYAN}║{Colors.RESET}")
+        print(f"{Colors.CYAN}|{Colors.RESET}{' ' * (width - 2)}{Colors.CYAN}|{Colors.RESET}")
         
         author = "Created by: John O. Mark"
-        print(f"{Colors.CYAN}║{Colors.RESET}{Colors.YELLOW}{author.center(width - 2)}{Colors.RESET}{Colors.CYAN}║{Colors.RESET}")
+        print(f"{Colors.CYAN}|{Colors.RESET}{Colors.YELLOW}{author.center(width - 2)}{Colors.RESET}{Colors.CYAN}|{Colors.RESET}")
         
         division = "Security Research Division"
-        print(f"{Colors.CYAN}║{Colors.RESET}{Colors.YELLOW}{division.center(width - 2)}{Colors.RESET}{Colors.CYAN}║{Colors.RESET}")
+        print(f"{Colors.CYAN}|{Colors.RESET}{Colors.YELLOW}{division.center(width - 2)}{Colors.RESET}{Colors.CYAN}|{Colors.RESET}")
         
-        print(f"{Colors.CYAN}║{Colors.RESET}{' ' * (width - 2)}{Colors.CYAN}║{Colors.RESET}")
-        print(f"{Colors.CYAN}{'╚' + '═' * (width - 2) + '╝'}{Colors.RESET}\n")
+        print(f"{Colors.CYAN}|{Colors.RESET}{' ' * (width - 2)}{Colors.CYAN}|{Colors.RESET}")
+        print(f"{Colors.CYAN}{'=' * width}{Colors.RESET}\n")
         
         print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}✓ NetWatch SIEM initialized successfully{Colors.RESET}")
         print(f"{Colors.CYAN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_CYAN}Ready to monitor your network...{Colors.RESET}\n")

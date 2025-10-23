@@ -124,6 +124,12 @@ class AdvancedNetworkScanner:
     def _get_network_info(self) -> Optional[Dict]:
         """Get comprehensive network information"""
         try:
+            # Check for Windows and warn about limitations
+            import platform
+            if platform.system() == "Windows":
+                logger.warning("Windows detected: ARP scanning requires administrator privileges")
+                logger.warning("Consider running as administrator or install Npcap for full functionality")
+            
             # Get active network interfaces
             interfaces = psutil.net_if_addrs()
             active_interfaces = []
@@ -190,10 +196,18 @@ class AdvancedNetworkScanner:
         return devices
     
     async def _arp_scan_chunk(self, ip_list: List) -> List[Dict]:
-        """Scan a chunk of IP addresses"""
+        """Scan a chunk of IP addresses with Windows compatibility"""
         devices = []
         
         try:
+            # Check if we're on Windows and handle accordingly
+            import platform
+            if platform.system() == "Windows":
+                # On Windows, ARP scanning requires administrator privileges
+                # Fall back to ping-based discovery
+                logger.info("Windows detected - using ping-based discovery instead of ARP")
+                return await self._ping_scan_chunk(ip_list)
+            
             # Create ARP requests
             arp_requests = []
             for ip in ip_list:
@@ -215,6 +229,26 @@ class AdvancedNetworkScanner:
                 
         except Exception as e:
             logger.error(f"ARP chunk scan error: {e}")
+            # Fall back to ping-based discovery
+            return await self._ping_scan_chunk(ip_list)
+        
+        return devices
+    
+    async def _ping_scan_chunk(self, ip_list: List) -> List[Dict]:
+        """Ping-based device discovery for Windows compatibility"""
+        devices = []
+        
+        try:
+            for ip in ip_list:
+                if self._ping_host(str(ip)):
+                    device = {
+                        'ip_address': str(ip),
+                        'detection_method': 'ping_scan',
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    devices.append(device)
+        except Exception as e:
+            logger.error(f"Ping scan chunk error: {e}")
         
         return devices
     
