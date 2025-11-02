@@ -5,7 +5,7 @@ Defines validation rules for all API endpoints
 
 # Device management schemas
 DEVICE_TRUST_SCHEMA = {
-    'is_trusted': {'type': 'bool', 'required': True}
+    'is_trusted': {'type': 'int', 'required': True}
 }
 
 DEVICE_NAME_SCHEMA = {

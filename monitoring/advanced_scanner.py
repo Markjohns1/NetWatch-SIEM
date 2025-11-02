@@ -201,7 +201,7 @@ class AdvancedNetworkScanner:
         return devices
     
     async def _arp_scan_chunk(self, ip_list: List) -> List[Dict]:
-        """Scan a chunk of IP addresses with Windows compatibility"""
+        """Scan a chunk of IP addresses with proper layer-2 ARP scanning"""
         devices = []
         
         try:
@@ -213,24 +213,31 @@ class AdvancedNetworkScanner:
                 logger.info("Windows detected - using ping-based discovery instead of ARP")
                 return await self._ping_scan_chunk(ip_list)
             
-            # Create ARP requests
-            arp_requests = []
+            # Create ARP requests with Ethernet broadcast frame (layer 2)
+            # This is the CRITICAL fix - ARP is layer 2, needs Ethernet header
             for ip in ip_list:
-                arp_req = ARP(pdst=str(ip))
-                arp_requests.append(arp_req)
-            
-            # Send ARP requests
-            answered, unanswered = sr(arp_requests, timeout=self.arp_timeout, verbose=0)
-            
-            for sent, received in answered:
-                device = {
-                    'ip_address': received.psrc,
-                    'mac_address': received.hwsrc,
-                    'vendor': self._get_vendor(received.hwsrc),
-                    'detection_method': 'arp_scan',
-                    'timestamp': datetime.now().isoformat()
-                }
-                devices.append(device)
+                try:
+                    arp_req = ARP(pdst=str(ip))
+                    ether = Ether(dst="ff:ff:ff:ff:ff:ff")
+                    packet = ether / arp_req
+                    
+                    # Use srp (send/receive at layer 2) instead of sr (layer 3)
+                    answered, unanswered = srp(packet, timeout=self.arp_timeout, verbose=0, retry=0)
+                    
+                    for sent, received in answered:
+                        device = {
+                            'ip_address': received.psrc,
+                            'mac_address': received.hwsrc,
+                            'vendor': self._get_vendor(received.hwsrc),
+                            'detection_method': 'arp_scan',
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        devices.append(device)
+                except (PermissionError, OSError):
+                    # No raw socket privileges - fall back immediately
+                    return await self._ping_scan_chunk(ip_list)
+                except:
+                    continue
                 
         except (PermissionError, OSError) as e:
             # Silently fall back to ping-based discovery for permission errors
@@ -292,7 +299,9 @@ class AdvancedNetworkScanner:
                 
                 for ip, future in futures:
                     try:
-                        if future.result(timeout=self.ping_timeout):
+                        # CRITICAL FIX: Don't use timeout here - ping command already has timeout
+                        # future.result(timeout=1) would timeout before ping completes
+                        if future.result():
                             # Generate pseudo-MAC from IP for cloud environments
                             mac = self._generate_mac_from_ip(ip)
                             device = {
@@ -303,7 +312,8 @@ class AdvancedNetworkScanner:
                                 'timestamp': datetime.now().isoformat()
                             }
                             devices.append(device)
-                    except:
+                    except Exception as e:
+                        # Silently skip failed pings
                         pass
                         
         except Exception as e:
@@ -312,14 +322,24 @@ class AdvancedNetworkScanner:
         return devices
     
     def _ping_host(self, ip: str) -> bool:
-        """Ping a single host"""
+        """Ping a single host with cross-platform support"""
         try:
-            # Use system ping for better reliability
-            result = subprocess.run(
-                ['ping', '-c', '1', '-W', '1', ip],
-                capture_output=True,
-                timeout=self.ping_timeout
-            )
+            import platform
+            # Windows uses different ping syntax
+            if platform.system() == "Windows":
+                # Windows: ping -n 1 -w 1000 (timeout in milliseconds)
+                result = subprocess.run(
+                    ['ping', '-n', '1', '-w', '1000', ip],
+                    capture_output=True,
+                    timeout=self.ping_timeout + 1
+                )
+            else:
+                # Linux/Unix: ping -c 1 -W 1 (timeout in seconds)
+                result = subprocess.run(
+                    ['ping', '-c', '1', '-W', '1', ip],
+                    capture_output=True,
+                    timeout=self.ping_timeout + 1
+                )
             return result.returncode == 0
         except:
             return False
