@@ -227,8 +227,12 @@ class AdvancedNetworkScanner:
                 }
                 devices.append(device)
                 
+        except (PermissionError, OSError) as e:
+            # Silently fall back to ping-based discovery for permission errors
+            return await self._ping_scan_chunk(ip_list)
         except Exception as e:
-            logger.error(f"ARP chunk scan error: {e}")
+            # Log other errors but still fall back
+            logger.debug(f"ARP chunk scan error: {e}")
             # Fall back to ping-based discovery
             return await self._ping_scan_chunk(ip_list)
         
@@ -337,13 +341,16 @@ class AdvancedNetworkScanner:
                                 }
                                 devices.append(device)
                                 
+                except (PermissionError, nmap.PortScannerError) as e:
+                    # Silently skip port scan chunks that require privileges
+                    logger.debug(f"Port scan chunk error (privileged operation): {e}")
                 except Exception as e:
-                    logger.error(f"Port scan chunk error: {e}")
+                    logger.debug(f"Port scan chunk error: {e}")
                 
                 await asyncio.sleep(0.5)  # Delay between chunks
                 
         except Exception as e:
-            logger.error(f"Port scan error: {e}")
+            logger.debug(f"Port scan error: {e}")
         
         return devices
     
