@@ -1,29 +1,34 @@
-#Ignore virtual environments
+# Virtual environments
 venv/
 .venv/
 .pythonlibs/
 
-#Ignore Python cache and compiled files
+# Python cache and compiled files
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-#Ignore environment variables
+# Environment variables and secrets
 .env
 
-#Ignore local databases and logs
+# Databases and logs
 *.log
 *.sqlite3
 *.db
-!netwatch.db
 
+# Optional: if you need sample data only, uncomment below
+#!netwatch.db
+
+# OS junk
 .DS_Store
 Thumbs.db
 
+# IDEs
 .idea/
 .vscode/
 
+# Build artifacts
 dist/
 build/
 *.egg-info/
