@@ -116,6 +116,11 @@ class AdvancedNetworkScanner:
         enhanced_devices = []
         for device in all_devices.values():
             enhanced_device = await self._enhance_device_info(device)
+            # Transform field names to match app.py expectations
+            if 'ip_address' in enhanced_device:
+                enhanced_device['ip'] = enhanced_device['ip_address']
+            if 'mac_address' in enhanced_device:
+                enhanced_device['mac'] = enhanced_device['mac_address']
             enhanced_devices.append(enhanced_device)
         
         logger.info(f"Comprehensive scan completed. Found {len(enhanced_devices)} devices")
@@ -245,8 +250,12 @@ class AdvancedNetworkScanner:
         try:
             for ip in ip_list:
                 if self._ping_host(str(ip)):
+                    # Generate pseudo-MAC from IP for cloud environments
+                    mac = self._generate_mac_from_ip(str(ip))
                     device = {
                         'ip_address': str(ip),
+                        'mac_address': mac,
+                        'vendor': self._get_vendor(mac),
                         'detection_method': 'ping_scan',
                         'timestamp': datetime.now().isoformat()
                     }
@@ -255,6 +264,16 @@ class AdvancedNetworkScanner:
             logger.error(f"Ping scan chunk error: {e}")
         
         return devices
+    
+    def _generate_mac_from_ip(self, ip: str) -> str:
+        """Generate a pseudo-MAC address from IP for cloud environments"""
+        try:
+            parts = ip.split('.')
+            # Use a recognizable prefix for generated MACs
+            mac = f"02:00:00:{int(parts[1]):02x}:{int(parts[2]):02x}:{int(parts[3]):02x}"
+            return mac.upper()
+        except:
+            return "02:00:00:00:00:00"
     
     async def _ping_sweep(self, network_info: Dict) -> List[Dict]:
         """Enhanced ping sweep with parallel processing"""
@@ -274,8 +293,12 @@ class AdvancedNetworkScanner:
                 for ip, future in futures:
                     try:
                         if future.result(timeout=self.ping_timeout):
+                            # Generate pseudo-MAC from IP for cloud environments
+                            mac = self._generate_mac_from_ip(ip)
                             device = {
                                 'ip_address': ip,
+                                'mac_address': mac,
+                                'vendor': self._get_vendor(mac),
                                 'detection_method': 'ping_sweep',
                                 'timestamp': datetime.now().isoformat()
                             }
