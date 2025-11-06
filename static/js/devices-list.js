@@ -27,7 +27,11 @@ function renderDeviceTable() {
     devicesData.forEach(device => {
         const statusClass = device.status === 'online' ? 'status-online' : 'status-offline';
         const isTrusted = device.is_trusted ? 'checked' : '';
-        const deviceName = device.device_name || device.hostname || 'Unknown';
+        // Normalize device name display - show "Unknown" if no name/hostname available
+        let deviceName = device.device_name || device.hostname || null;
+        if (!deviceName || deviceName.trim() === '' || deviceName === 'Unknown') {
+            deviceName = 'Unknown';
+        }
         
         html += `
             <tr class="hover:bg-slate-800/50 transition">
@@ -170,11 +174,55 @@ function toggleTrust(deviceId, isTrusted) {
 }
 
 function updatePageData() {
+    console.log('Refreshing devices...');
     loadDevices();
+    return true;
 }
 
 window.updatePageData = updatePageData;
 
+// Make sure it's always available
+if (typeof window.updatePageData === 'undefined') {
+    window.updatePageData = updatePageData;
+}
+
+// Real-time updates via Socket.IO
+function setupRealtimeUpdates() {
+    if (typeof io !== 'undefined' && window.netwatchRealtime && window.netwatchRealtime.socket) {
+        // Remove existing listeners to avoid duplicates
+        window.netwatchRealtime.socket.off('device_list_update');
+        window.netwatchRealtime.socket.off('device_status_update');
+        
+        window.netwatchRealtime.socket.on('device_list_update', (data) => {
+            if (data && data.devices) {
+                devicesData = data.devices;
+                renderDeviceTable();
+            }
+        });
+        
+        window.netwatchRealtime.socket.on('device_status_update', (data) => {
+            if (data && data.changes) {
+                // Refresh device list when status changes
+                loadDevices();
+            }
+        });
+    } else {
+        // Retry if socket not ready yet
+        setTimeout(setupRealtimeUpdates, 500);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     loadDevices();
+    // Setup real-time updates once socket is ready
+    setupRealtimeUpdates();
 });
+
+// Also setup when socket connects
+if (window.netwatchRealtime) {
+    const originalConnect = window.netwatchRealtime.setupEventHandlers;
+    window.netwatchRealtime.setupEventHandlers = function() {
+        if (originalConnect) originalConnect.call(this);
+        setTimeout(setupRealtimeUpdates, 100);
+    };
+}

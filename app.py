@@ -2,12 +2,13 @@ from flask import Flask, render_template, jsonify, request, session, redirect, u
 from flask_socketio import SocketIO, emit, disconnect
 from functools import wraps
 from database.models import Database, get_kenya_time
-from scanner.device_scanner import DeviceScanner
+# Legacy scanner import removed - using NetworkScanner now
+
 from rules.alert_engine import AlertEngine
 from rules.smart_alert_engine import SmartAlertEngine
 from flask.signals import appcontext_pushed
 from i18n import I18nManager
-from security import SecurityManager, require_auth, validate_input, sanitize_input
+from security import SecurityManager, require_auth, require_admin, validate_input, sanitize_input, require_permission
 from security.schemas import *
 from models import UserManager
 from monitoring import AdvancedNetworkScanner, TrafficAnalyzer
@@ -37,12 +38,13 @@ socketio = SocketIO(
     logger=False, 
     engineio_logger=False,
     async_mode='threading',
-    ping_timeout=60,
-    ping_interval=25,
-    max_http_buffer_size=10000000,
+    ping_timeout=20,          # Faster timeout
+    ping_interval=10,         # More frequent pings
+    max_http_buffer_size=1000000,  # Smaller buffer = faster
     allow_upgrades=True,
-    transports=['websocket', 'polling'],
-    engineio_logger_level='ERROR'
+    transports=['websocket'],  # WebSocket only - faster than polling
+    engineio_logger_level='ERROR',
+    always_connect=True
 )
 
 def safe_emit(event, data, **kwargs):
@@ -79,6 +81,24 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         if 'logged_in' not in session:
             return redirect(url_for('login'))
+        
+        # Check if user is still active - REAL-TIME CHECK
+        user_id = session.get('user_id')
+        if user_id:
+            try:
+                conn = db.get_connection()
+                cursor = conn.cursor()
+                cursor.execute('SELECT is_active FROM users WHERE id = ?', (user_id,))
+                result = cursor.fetchone()
+                conn.close()
+                
+                if result and not result[0]:  # User is deactivated
+                    session.clear()
+                    flash('Your account has been deactivated', 'error')
+                    return redirect(url_for('login'))
+            except:
+                pass  # Don't fail on check
+        
         return f(*args, **kwargs)
     return decorated_function
 
@@ -93,9 +113,9 @@ advanced_scanner = AdvancedNetworkScanner(db)
 traffic_analyzer = TrafficAnalyzer(db)
 
 db.set_config('scanning_active', True)
-print(f"{Colors.CYAN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Auto-enabling network scanner...")
+print(f"[{datetime.now().strftime('%H:%M:%S')}] Auto-enabling network scanner...")
 
-scanner = DeviceScanner(db, verbose=False, show_banner=True)
+# Legacy scanner removed - using NetworkScanner on-demand
 smart_alert_engine = SmartAlertEngine(db)
 alert_engine = AlertEngine(db)
 
@@ -124,12 +144,10 @@ def _scanner_loop(app):
                 current_interval = db.get_config('scan_interval') or 60
                 SCAN_INTERVAL = current_interval
                 
-                # Use enhanced scanner for better device detection
-                try:
-                    devices = asyncio.run(advanced_scanner.comprehensive_network_scan())
-                except Exception as e:
-                    print(f"{Colors.YELLOW}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Enhanced scan failed, falling back to basic scan: {e}")
-                    devices = scanner.scan_network()
+                # Use FAST NetworkScanner
+                from scanner.network_scanner import NetworkScanner
+                scanner = NetworkScanner(db)
+                devices = scanner.scan_network()
 
                 current_devices = set()
                 device_status_changes = []
@@ -145,6 +163,14 @@ def _scanner_loop(app):
                         device_id, old_status, existing_name, existing_hostname, existing_vendor = result
                         current_devices.add(device_id)
                         
+                        # Normalize hostname - use "Unknown" if not available
+                        hostname = device_dict.get('hostname') or existing_hostname or None
+                        if hostname and (hostname.strip() == '' or hostname == 'Unknown'):
+                            hostname = None
+                        
+                        # Only set device_name to "Unknown" if it's not user-set and hostname is missing
+                        device_name = existing_name if existing_name else None
+                        
                         # Update device information while preserving user-set name
                         kenya_time = get_kenya_time()
                         cursor.execute('''
@@ -153,8 +179,8 @@ def _scanner_loop(app):
                             WHERE id = ?
                         ''', (
                             device_dict['ip'], 
-                            device_dict.get('hostname') or existing_hostname,
-                            device_dict.get('vendor') or existing_vendor,
+                            hostname,
+                            device_dict.get('vendor') or existing_vendor or 'Unknown',
                             kenya_time,
                             device_id
                         ))
@@ -168,16 +194,23 @@ def _scanner_loop(app):
                                 'status': 'online',
                                 'change': 'came_online'
                             })
-                            print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}[ONLINE]{Colors.RESET} {device_dict['ip']} ({device_dict['mac']})")
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] [ONLINE] {device_dict['ip']} ({device_dict['mac']})")
                         
                         smart_alert_engine.process_smart_alerts(device_id)
                     else:
+                        # Normalize hostname for new device
+                        hostname = device_dict.get('hostname')
+                        if not hostname or hostname.strip() == '' or hostname == 'Unknown':
+                            hostname = None
+                        
+                        vendor = device_dict.get('vendor') or 'Unknown'
+                        
                         # Add new device
                         device_id = db.add_device(
                             device_dict['ip'], 
                             device_dict['mac'], 
-                            device_dict.get('hostname'),
-                            device_dict.get('vendor')
+                            hostname,
+                            vendor
                         )
                         if device_id:
                             current_devices.add(device_id)
@@ -188,7 +221,7 @@ def _scanner_loop(app):
                                 'status': 'online',
                                 'change': 'new_device'
                             })
-                            print(f"{Colors.CYAN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_CYAN}[NEW]{Colors.RESET} {device_dict['ip']} ({device_dict['mac']}) - {device_dict.get('vendor', 'Unknown')}")
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] [NEW] {device_dict['ip']} ({device_dict['mac']}) - {vendor}")
 
                     conn.close()
 
@@ -210,7 +243,7 @@ def _scanner_loop(app):
                             'status': 'offline',
                             'change': 'went_offline'
                         })
-                        print(f"{Colors.RED}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.RED}[OFFLINE]{Colors.RESET} {ip} ({mac})")
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] [OFFLINE] {ip} ({mac})")
                     conn.close()
 
                 if device_status_changes:
@@ -219,6 +252,13 @@ def _scanner_loop(app):
                         'timestamp': datetime.now().isoformat(),
                         'total_devices': len(current_devices)
                     })
+                
+                # Always emit device list update after scanning for real-time sync
+                all_devices = db.get_all_devices()
+                safe_emit('device_list_update', {
+                    'devices': all_devices,
+                    'timestamp': datetime.now().isoformat()
+                })
                 
                 stats = db.get_dashboard_stats()
                 safe_emit('dashboard_stats_update', {
@@ -231,7 +271,7 @@ def _scanner_loop(app):
                 smart_alert_engine.run_smart_periodic_checks()
 
             except Exception as e:
-                print(f"{Colors.RED}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.RED}[ERROR]{Colors.RESET} Scanner error: {e}")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] [ERROR] Scanner error: {e}")
 
             time.sleep(SCAN_INTERVAL)
 
@@ -251,9 +291,9 @@ def start_background_scanner():
     if scanning_enabled:
         scanner_thread = threading.Thread(target=_scanner_loop, args=(app,), daemon=True)
         scanner_thread.start()
-        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.BRIGHT_GREEN}[OK] Background scanning: ACTIVE{Colors.RESET}\n")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] [OK] Background scanning: ACTIVE\n")
     else:
-        print(f"{Colors.YELLOW}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} {Colors.YELLOW}⚠ Background scanning: DISABLED{Colors.RESET}\n")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠ Background scanning: DISABLED\n")
 
 
 def _on_appcontext_pushed(sender, **extra):
@@ -408,7 +448,7 @@ def get_active_devices():
 
 
 @app.route('/api/devices/<int:device_id>/trust', methods=['POST'])
-@require_auth
+@require_permission('manage_devices')
 def toggle_device_trust(device_id):
     try:
         data = request.json or {}
@@ -434,6 +474,13 @@ def toggle_device_trust(device_id):
             device_id=device_id
         )
         
+        # Emit real-time update
+        all_devices = db.get_all_devices()
+        safe_emit('device_list_update', {
+            'devices': all_devices,
+            'timestamp': datetime.now().isoformat()
+        })
+        
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -444,13 +491,24 @@ def toggle_device_trust(device_id):
 def update_device_name(device_id):
     try:
         data = request.json
-        device_name = data.get('name', '')
+        device_name = data.get('name', '').strip()
+        
+        # Normalize empty names
+        if not device_name or device_name == '':
+            device_name = None
         
         conn = db.get_connection()
         cursor = conn.cursor()
         cursor.execute('UPDATE devices SET device_name = ? WHERE id = ?', (device_name, device_id))
         conn.commit()
         conn.close()
+        
+        # Emit real-time update
+        all_devices = db.get_all_devices()
+        safe_emit('device_list_update', {
+            'devices': all_devices,
+            'timestamp': datetime.now().isoformat()
+        })
         
         return jsonify({'success': True})
     except Exception as e:
@@ -469,7 +527,7 @@ def get_alerts():
 
 
 @app.route('/api/alerts/<int:alert_id>/resolve', methods=['POST'])
-@login_required
+@require_permission('manage_alerts')
 def resolve_alert(alert_id):
     try:
         db.resolve_alert(alert_id)
@@ -500,22 +558,47 @@ def scan_status():
 
 
 @app.route('/api/scan/now', methods=['POST'])
-@login_required
+@require_permission('scan_network')
 def scan_now():
     try:
+        # Use FAST NetworkScanner
+        from scanner.network_scanner import NetworkScanner
+        scanner = NetworkScanner(db)
         devices = scanner.scan_network()
         
+        # Process devices and update database
+        device_ids = []
         for device_dict in devices:
-            conn = db.get_connection()
-            cursor = conn.cursor()
-            cursor.execute('SELECT id FROM devices WHERE mac_address = ?', (device_dict['mac'],))
-            result = cursor.fetchone()
+            # Normalize hostname
+            hostname = device_dict.get('hostname')
+            if not hostname or hostname.strip() == '' or hostname == 'Unknown':
+                hostname = None
             
-            if result:
-                device_id = result[0]
-                smart_alert_engine.process_smart_alerts(device_id)
+            vendor = device_dict.get('vendor') or 'Unknown'
             
-            conn.close()
+            # Add or update device
+            device_id = db.add_device(
+                device_dict['ip'],
+                device_dict.get('mac', '00:00:00:00:00:00'),
+                hostname,
+                vendor
+            )
+            
+            if device_id:
+                device_ids.append(device_id)
+        
+        # Emit real-time updates IMMEDIATELY
+        all_devices = db.get_all_devices()
+        safe_emit('device_list_update', {
+            'devices': all_devices,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+        stats = db.get_dashboard_stats()
+        safe_emit('dashboard_stats_update', {
+            'stats': stats,
+            'timestamp': datetime.now().isoformat()
+        })
         
         return jsonify({
             'success': True,
@@ -523,6 +606,8 @@ def scan_now():
             'devices_count': len(devices)
         })
     except Exception as e:
+        import traceback
+        print(f"Scan error: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -775,7 +860,7 @@ def get_config():
 
 
 @app.route('/api/devices/delete', methods=['POST'])
-@login_required
+@require_permission('manage_devices')
 def delete_devices():
     try:
         data = request.json
@@ -792,13 +877,26 @@ def delete_devices():
             description=f"Deleted {deleted_count} device(s) from system"
         )
         
+        # Emit real-time update
+        all_devices = db.get_all_devices()
+        safe_emit('device_list_update', {
+            'devices': all_devices,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+        stats = db.get_dashboard_stats()
+        safe_emit('dashboard_stats_update', {
+            'stats': stats,
+            'timestamp': datetime.now().isoformat()
+        })
+        
         return jsonify({'success': True, 'deleted_count': deleted_count})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/alerts/<int:alert_id>/mark-safe', methods=['POST'])
-@login_required
+@require_permission('manage_alerts')
 def mark_alert_safe(alert_id):
     try:
         db.mark_alert_safe(alert_id)
@@ -808,7 +906,7 @@ def mark_alert_safe(alert_id):
 
 
 @app.route('/api/alerts/delete', methods=['POST'])
-@login_required
+@require_permission('manage_alerts')
 def delete_alerts():
     try:
         data = request.json
@@ -894,7 +992,7 @@ def get_current_language():
 
 
 @app.route('/api/config/save', methods=['POST'])
-@login_required
+@require_permission('manage_config')
 def save_config():
     try:
         global scan_interval, SCAN_INTERVAL, scanning_active
@@ -1002,8 +1100,12 @@ def analytics_page():
 
 
 @app.route('/users')
-@require_auth
+@login_required
 def users_page():
+    # Check if user is admin
+    if not session.get('is_admin', False):
+        flash('Admin access required', 'error')
+        return redirect(url_for('index'))
     return render_template('users.html')
 
 
@@ -1055,7 +1157,7 @@ def get_rules():
 
 
 @app.route('/api/rules/add', methods=['POST'])
-@login_required
+@require_permission('manage_rules')
 def add_rule():
     try:
         data = request.json
@@ -1098,7 +1200,7 @@ def add_rule():
 
 
 @app.route('/api/rules/<int:rule_id>', methods=['DELETE'])
-@login_required
+@require_permission('manage_rules')
 def delete_rule(rule_id):
     try:
         conn = db.get_connection()
@@ -1141,7 +1243,7 @@ def toggle_rule(rule_id):
 
 
 @app.route('/api/rules/<int:rule_id>', methods=['PUT'])
-@login_required
+@require_permission('manage_rules')
 def update_rule(rule_id):
     """Update an existing rule"""
     try:
@@ -1252,9 +1354,9 @@ def test_rule():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# User Management API Endpoints
+# User Management API Endpoints - ADMIN ONLY
 @app.route('/api/users', methods=['GET'])
-@require_auth
+@require_admin
 def get_users():
     try:
         users = user_manager.get_all_users()
@@ -1264,10 +1366,13 @@ def get_users():
 
 
 @app.route('/api/users', methods=['POST'])
-@require_auth
+@require_admin
 def create_user():
     try:
         data = request.json or {}
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
         data = sanitize_input(data)
         
         # Validate input
@@ -1281,6 +1386,11 @@ def create_user():
         if errors:
             return jsonify({'success': False, 'error': '; '.join(errors)}), 400
         
+        # Validate role - only admin and viewer
+        valid_roles = ['admin', 'viewer']
+        if data.get('role') not in valid_roles:
+            return jsonify({'success': False, 'error': 'Role must be either "admin" or "viewer"'}), 400
+        
         result = user_manager.register_user(
             data['username'],
             data['email'],
@@ -1288,17 +1398,53 @@ def create_user():
             data['role']
         )
         
-        return jsonify(result)
+        if result['success']:
+            # Log event async (don't wait)
+            def log_event():
+                try:
+                    db.add_event(
+                        event_type='user_created',
+                        severity='info',
+                        description=f"User {data['username']} created with role {data['role']}"
+                    )
+                except:
+                    pass
+            
+            import threading
+            threading.Thread(target=log_event, daemon=True).start()
+            
+            # Broadcast user list update (async - don't block)
+            def broadcast_update():
+                try:
+                    all_users = user_manager.get_all_users()
+                    safe_emit('user_list_update', {
+                        'users': all_users,
+                        'timestamp': datetime.now().isoformat(),
+                        'action': 'user_created',
+                        'username': data['username']
+                    })
+                except:
+                    pass
+            
+            threading.Thread(target=broadcast_update, daemon=True).start()
+            
+            return jsonify(result)
+        else:
+            return jsonify(result), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        import traceback
+        print(f"User creation error: {e}")
+        print(traceback.format_exc())
+        return jsonify({'success': False, 'error': f'Server error: {str(e)}'}), 500
 
 
 @app.route('/api/users/<int:user_id>/status', methods=['PUT'])
-@require_auth
+@require_admin
 def update_user_status(user_id):
     try:
         data = request.json or {}
         is_active = data.get('is_active', True)
+        current_user_id = session.get('user_id')
         
         if is_active:
             # Reactivate user
@@ -1309,7 +1455,64 @@ def update_user_status(user_id):
             conn.close()
         else:
             # Deactivate user
-            user_manager.deactivate_user(user_id)
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute('UPDATE users SET is_active = 0 WHERE id = ?', (user_id,))
+            conn.commit()
+            conn.close()
+            
+            # IF USER DEACTIVATED THEMSELVES - LOG THEM OUT IMMEDIATELY
+            if current_user_id == user_id:
+                # Invalidate all their sessions
+                try:
+                    conn = db.get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute('DELETE FROM user_sessions WHERE user_id = ?', (user_id,))
+                    conn.commit()
+                    conn.close()
+                except:
+                    pass
+                
+                # Clear their current session
+                session.clear()
+                
+                # Return special response to trigger logout on frontend
+                return jsonify({
+                    'success': True,
+                    'logged_out': True,
+                    'message': 'Your account has been deactivated. You will be logged out.'
+                }), 200
+        
+        # Log event async
+        def log_event():
+            try:
+                event_type = 'user_activated' if is_active else 'user_deactivated'
+                db.add_event(
+                    event_type=event_type,
+                    severity='info',
+                    description=f"User {user_id} {'activated' if is_active else 'deactivated'}"
+                )
+            except:
+                pass
+        
+        import threading
+        threading.Thread(target=log_event, daemon=True).start()
+        
+        # Broadcast user list update (async)
+        def broadcast_update():
+            try:
+                all_users = user_manager.get_all_users()
+                safe_emit('user_list_update', {
+                    'users': all_users,
+                    'timestamp': datetime.now().isoformat(),
+                    'action': 'user_status_changed',
+                    'user_id': user_id,
+                    'deactivated_self': current_user_id == user_id and not is_active
+                })
+            except:
+                pass
+        
+        threading.Thread(target=broadcast_update, daemon=True).start()
         
         return jsonify({'success': True})
     except Exception as e:
@@ -1317,7 +1520,7 @@ def update_user_status(user_id):
 
 
 @app.route('/api/users/activity', methods=['GET'])
-@require_auth
+@require_admin
 def get_user_activity():
     try:
         limit = request.args.get('limit', 100, type=int)
@@ -1332,7 +1535,8 @@ def handle_connect():
     try:
         client_sid = request.sid
         active_clients.add(client_sid)
-        print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Client connected: {client_sid}")
+        # Only log in verbose mode - reduce noise
+        # print(f"{Colors.GREEN}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Client connected: {client_sid}")
         emit('connected', {'message': 'Connected to NetWatch SIEM'}, skip_errors=True)
     except Exception:
         pass
@@ -1343,7 +1547,8 @@ def handle_disconnect():
         client_sid = request.sid
         if client_sid in active_clients:
             active_clients.remove(client_sid)
-        print(f"{Colors.YELLOW}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Client disconnected: {client_sid}")
+        # Only log in verbose mode - reduce noise
+        # print(f"{Colors.YELLOW}[{datetime.now().strftime('%H:%M:%S')}]{Colors.RESET} Client disconnected: {client_sid}")
     except Exception:
         pass
 

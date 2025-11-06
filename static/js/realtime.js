@@ -57,6 +57,14 @@ class NetWatchRealtime {
                 this.socket.emit('request_dashboard_stats');
                 this.socket.emit('request_device_list');
             }, 100);
+            
+            // Trigger real-time listener setup on all pages
+            if (typeof setupRealtimeListeners === 'function') {
+                setupRealtimeListeners();
+            }
+            if (typeof setupRealtimeUpdates === 'function') {
+                setupRealtimeUpdates();
+            }
         });
         
         this.socket.on('disconnect', (reason) => {
@@ -87,6 +95,11 @@ class NetWatchRealtime {
             if (data && data.devices) {
                 this.updateDeviceList(data.devices);
                 this.updateLastUpdateTime(data.timestamp);
+                
+                // Force update dashboard stats when device list changes
+                if (typeof updateDashboardStats === 'function') {
+                    updateDashboardStats();
+                }
             }
         });
         
@@ -178,6 +191,16 @@ class NetWatchRealtime {
     
     updateDeviceList(devices) {
         console.log('Device list updated:', devices.length, 'devices');
+        
+        // Update dashboard if on devices page
+        if (typeof updatePageData === 'function') {
+            updatePageData();
+        }
+        
+        // Update active devices on dashboard
+        if (typeof updateActiveDevices === 'function') {
+            updateActiveDevices();
+        }
     }
     
     animateNumberChange(element, newValue) {

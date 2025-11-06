@@ -706,14 +706,20 @@ class DeviceScanner:
                 
                 # Get hostname from batch resolution or individual lookup
                 device_ip = device.get('ip')
+                hostname = None
                 if device_ip and device_ip in hostname_map:
-                    device['hostname'] = hostname_map[device_ip]
+                    hostname = hostname_map[device_ip]
                 else:
                     try:
                         hostname = self.get_hostname(device_ip) if device_ip else None
-                        device['hostname'] = hostname
                     except:
-                        device['hostname'] = None
+                        hostname = None
+                
+                # Normalize hostname - don't store "Unknown" string, use None instead
+                if not hostname or hostname.strip() == '' or hostname.lower() == 'unknown':
+                    hostname = None
+                
+                device['hostname'] = hostname
                 
                 if not device.get('ip') or device['ip'] == 'Unknown':
                     continue

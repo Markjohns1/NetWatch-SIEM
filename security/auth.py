@@ -112,19 +112,45 @@ class SecurityManager:
         )
 
 def require_auth(f):
-    """Enhanced authentication decorator with security checks"""
+    """Enhanced authentication decorator with security checks and REAL-TIME user status check"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # Check if user is logged in
         if 'logged_in' not in session:
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
         
+        # REAL-TIME: Check if user is still active (fast check)
+        user_id = session.get('user_id')
+        if user_id:
+            try:
+                # Use current_app to get db instance without circular import
+                db = current_app.extensions.get('db')
+                if not db:
+                    # Fallback: import directly (will work in runtime)
+                    from database.models import Database
+                    db = Database()
+                
+                conn = db.get_connection()
+                cursor = conn.cursor()
+                cursor.execute('SELECT is_active FROM users WHERE id = ? LIMIT 1', (user_id,))
+                result = cursor.fetchone()
+                conn.close()
+                
+                if result and not result[0]:  # User is deactivated
+                    session.clear()
+                    return jsonify({'success': False, 'error': 'Account deactivated', 'logged_out': True}), 403
+            except:
+                pass  # Don't fail on check - allow request to proceed
+        
         # Check session expiry
         if 'last_activity' in session:
-            last_activity = datetime.fromisoformat(session['last_activity'])
-            if datetime.now() - last_activity > timedelta(hours=8):
-                session.clear()
-                return jsonify({'success': False, 'error': 'Session expired'}), 401
+            try:
+                last_activity = datetime.fromisoformat(session['last_activity'])
+                if datetime.now() - last_activity > timedelta(hours=8):
+                    session.clear()
+                    return jsonify({'success': False, 'error': 'Session expired'}), 401
+            except:
+                pass
         
         # Update last activity
         session['last_activity'] = datetime.now().isoformat()

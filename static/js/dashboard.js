@@ -56,7 +56,14 @@ function updateActiveDevices() {
         .then(res => res.json())
         .then(data => {
             if (data.success && data.data.length > 0) {
-                container.innerHTML = data.data.slice(0, 5).map(device => `
+                container.innerHTML = data.data.slice(0, 5).map(device => {
+                    // Normalize device name
+                    let deviceName = device.device_name || device.hostname || null;
+                    if (!deviceName || deviceName.trim() === '' || deviceName === 'Unknown') {
+                        deviceName = 'Unknown';
+                    }
+                    
+                    return `
                     <div class="device-card fade-in">
                         <div class="flex items-center justify-between">
                             <div class="flex items-center gap-3">
@@ -64,14 +71,15 @@ function updateActiveDevices() {
                                     <i data-feather="wifi" class="w-4 h-4 text-emerald-400"></i>
                                 </div>
                                 <div>
-                                    <p class="font-medium">${device.device_name || device.hostname || 'Unknown Device'}</p>
+                                    <p class="font-medium">${deviceName}</p>
                                     <p class="text-xs text-slate-400">${device.ip_address} • ${device.vendor || 'Unknown'}</p>
                                 </div>
                             </div>
                             <span class="status-badge status-online">Online</span>
                         </div>
                     </div>
-                `).join('');
+                `;
+                }).join('');
                 feather.replace();
             } else {
                 container.innerHTML = '<p class="text-slate-400 text-sm">No devices detected</p>';
@@ -242,27 +250,73 @@ function initializeDashboard() {
     updateActiveDevices();
     updateActivityChart();
     updateQuickAnalytics();
+    
+    // Setup real-time Socket.IO listeners
+    setupRealtimeListeners();
+}
+
+function setupRealtimeListeners() {
+    // Wait for socket to be ready
+    function setup() {
+        if (typeof io !== 'undefined' && window.netwatchRealtime && window.netwatchRealtime.socket && window.netwatchRealtime.socket.connected) {
+            // Remove existing listeners to avoid duplicates
+            window.netwatchRealtime.socket.off('dashboard_stats_update');
+            window.netwatchRealtime.socket.off('device_list_update');
+            window.netwatchRealtime.socket.off('device_status_update');
+            
+            // Listen for dashboard stats updates
+            window.netwatchRealtime.socket.on('dashboard_stats_update', (data) => {
+                if (data && data.stats) {
+                    updateDashboardStats();
+                }
+            });
+            
+            // Listen for device list updates
+            window.netwatchRealtime.socket.on('device_list_update', (data) => {
+                if (data && data.devices) {
+                    updateActiveDevices();
+                    updateDashboardStats();
+                }
+            });
+            
+            // Listen for device status changes
+            window.netwatchRealtime.socket.on('device_status_update', (data) => {
+                if (data && data.changes) {
+                    updateActiveDevices();
+                    updateDashboardStats();
+                }
+            });
+            
+            console.log('Real-time listeners setup for dashboard');
+        } else {
+            // Retry after a short delay
+            setTimeout(setup, 500);
+        }
+    }
+    
+    setup();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     initializeDashboard();
 });
 
-setInterval(() => {
-    if (document.getElementById('totalDevices')) {
-        updateRecentAlerts();
-        updateActiveDevices();
-    }
-}, 10000);
+// Fallback polling (only if socket not connected)
+let fallbackInterval = null;
+function startFallbackPolling() {
+    if (fallbackInterval) return;
+    
+    fallbackInterval = setInterval(() => {
+        // Only poll if socket is not connected
+        if (!window.netwatchRealtime || !window.netwatchRealtime.isConnected) {
+            if (document.getElementById('totalDevices')) {
+                updateRecentAlerts();
+                updateActiveDevices();
+                updateDashboardStats();
+            }
+        }
+    }, 5000);  // Poll every 5 seconds as fallback
+}
 
-setInterval(() => {
-    if (document.getElementById('networkChart')) {
-        updateActivityChart();
-    }
-}, 15000);
-
-setInterval(() => {
-    if (document.getElementById('quickHealthScore')) {
-        updateQuickAnalytics();
-    }
-}, 30000);
+// Start fallback polling after initial load
+setTimeout(startFallbackPolling, 2000);

@@ -269,20 +269,51 @@
                 });
         }
 
-        document.getElementById('scanNowBtn').addEventListener('click', function() {
-            this.disabled = true;
-            this.textContent = 'Scanning...';
-            
-            fetch('/api/scan/now', { method: 'POST' })
-                .then(res => res.json())
-                .then(data => {
-                    this.disabled = false;
-                    this.textContent = 'Scan';
-                    document.getElementById('lastScanTime').textContent = 'Just now';
-                    updateSidebarStats();
-                    if (window.updatePageData) window.updatePageData();
-                });
-        });
+        const scanNowBtn = document.getElementById('scanNowBtn');
+        if (scanNowBtn) {
+            scanNowBtn.addEventListener('click', function() {
+                const btn = this;
+                btn.disabled = true;
+                const originalText = btn.textContent;
+                btn.textContent = 'Scanning...';
+                
+                fetch('/api/scan/now', { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => {
+                        btn.disabled = false;
+                        btn.textContent = originalText;
+                        
+                        if (data.success) {
+                            // Show success message
+                            const msg = document.createElement('div');
+                            msg.className = 'fixed top-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50';
+                            msg.textContent = `Scan complete! Found ${data.devices_count || 0} devices.`;
+                            document.body.appendChild(msg);
+                            setTimeout(() => msg.remove(), 3000);
+                            
+                            // Update UI immediately
+                            const lastScanTime = document.getElementById('lastScanTime');
+                            if (lastScanTime) lastScanTime.textContent = 'Just now';
+                            
+                            // Refresh all data
+                            updateSidebarStats();
+                            if (window.updatePageData) window.updatePageData();
+                            
+                            // Force dashboard refresh
+                            if (typeof updateDashboardStats === 'function') updateDashboardStats();
+                            if (typeof loadDevices === 'function') loadDevices();
+                        } else {
+                            alert('Scan failed: ' + (data.error || 'Unknown error'));
+                        }
+                    })
+                    .catch(error => {
+                        btn.disabled = false;
+                        btn.textContent = originalText;
+                        alert('Scan error: ' + error.message);
+                        console.error('Scan error:', error);
+                    });
+            });
+        }
 
         // Global Search Functionality
         let globalSearchTimeout = null;
@@ -470,7 +501,7 @@
         }
     </script>
     
-    <!--<script src="{{ url_for('static', filename='js/realtime.js') }}"></script> -->
+    <script src="{{ url_for('static', filename='js/realtime.js') }}"></script>
     
     
     {% block scripts %}{% endblock %}

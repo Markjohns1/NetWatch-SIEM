@@ -18,20 +18,22 @@ class Database:
     
     def get_connection(self):
         """
-        Creates and returns a thread-safe SQLite connection with WAL mode enabled.
-        This allows the Flask app and background scanner to share the same database.
+        Creates and returns a thread-safe SQLite connection - FAST and SIMPLE
+        WAL mode enabled for concurrency without retries (faster)
         """
         conn = sqlite3.connect(
             self.db_path,
-            timeout=30,               # waits up to 30s if database is busy
-            check_same_thread=False   # allow access from background threads
+            timeout=5,                # Short timeout - fail fast
+            check_same_thread=False
         )
         conn.row_factory = sqlite3.Row
         
-        # CRITICAL: Enable WAL mode for better concurrency
+        # Enable WAL mode - fast concurrent access
         conn.execute('PRAGMA journal_mode=WAL')
-        conn.execute('PRAGMA busy_timeout=30000')  # 30 seconds
-        conn.execute('PRAGMA synchronous=NORMAL')  # Better performance
+        conn.execute('PRAGMA busy_timeout=5000')   # 5 seconds max wait
+        conn.execute('PRAGMA synchronous=NORMAL')
+        conn.execute('PRAGMA foreign_keys=ON')
+        conn.execute('PRAGMA temp_store=MEMORY')   # Faster temp operations
         
         return conn
     
@@ -49,7 +51,7 @@ class Database:
                     hostname TEXT,
                     vendor TEXT,
                     device_name TEXT,
-                    is_trusted INTEGER DEFAULT 0,
+                    is_trusted INTEGER DEFAULT 1,
                     risk_score INTEGER DEFAULT 0,
                     status TEXT DEFAULT 'offline',
                     first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -380,10 +382,10 @@ class Database:
                 conn.commit()
                 return device_id
             
-            # Insert new device
+            # Insert new device - default to trusted
             cursor.execute('''
-                INSERT INTO devices (ip_address, mac_address, hostname, vendor, status, first_seen, last_seen)
-                VALUES (?, ?, ?, ?, 'online', ?, ?)
+                INSERT INTO devices (ip_address, mac_address, hostname, vendor, status, first_seen, last_seen, is_trusted)
+                VALUES (?, ?, ?, ?, 'online', ?, ?, 1)
             ''', (ip, mac, hostname, vendor, kenya_time, kenya_time))
             device_id = cursor.lastrowid
             conn.commit()
@@ -562,7 +564,17 @@ class Database:
         
         try:
             cursor.execute('SELECT * FROM devices ORDER BY last_seen DESC')
-            devices = [dict(row) for row in cursor.fetchall()]
+            devices = []
+            for row in cursor.fetchall():
+                device = dict(row)
+                # Normalize device name for display - if no device_name or hostname, mark as None (will show as "Unknown" in frontend)
+                if not device.get('device_name') and not device.get('hostname'):
+                    device['display_name'] = None
+                elif device.get('device_name'):
+                    device['display_name'] = device['device_name']
+                else:
+                    device['display_name'] = device.get('hostname')
+                devices.append(device)
             return devices
         finally:
             conn.close()
@@ -696,26 +708,32 @@ class UserManager:
         self.db = db
     
     def register_user(self, username, email, password, role='viewer'):
-        """Register a new user with proper transaction handling"""
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        
+        """Register a new user - FAST and SIMPLE with immediate commits"""
+        conn = None
         try:
-            # Check if username exists
-            cursor.execute('SELECT id FROM users WHERE username = ?', (username,))
+            # Get connection with immediate mode for faster writes
+            conn = self.db.get_connection()
+            conn.execute('BEGIN IMMEDIATE')  # Immediate mode - faster, less locking
+            cursor = conn.cursor()
+            
+            # Quick check if username exists
+            cursor.execute('SELECT id FROM users WHERE username = ? LIMIT 1', (username,))
             if cursor.fetchone():
+                conn.rollback()
+                conn.close()
                 return {'success': False, 'error': 'Username already exists'}
             
-            # Check if email exists
-            cursor.execute('SELECT id FROM users WHERE email = ?', (email,))
+            # Quick check if email exists
+            cursor.execute('SELECT id FROM users WHERE email = ? LIMIT 1', (email,))
             if cursor.fetchone():
+                conn.rollback()
+                conn.close()
                 return {'success': False, 'error': 'Email already exists'}
             
-            # Hash password
+            # Hash password and insert
             password_hash = generate_password_hash(password)
             kenya_time = get_kenya_time()
             
-            # Insert user
             cursor.execute('''
                 INSERT INTO users (username, email, password_hash, role, is_active, created_at)
                 VALUES (?, ?, ?, ?, 1, ?)
@@ -723,20 +741,33 @@ class UserManager:
             
             user_id = cursor.lastrowid
             conn.commit()
+            conn.close()
+            conn = None
             
-            # Log activity
-            self._log_activity(user_id, username, 'user_registered', None, 'New user account created')
+            # Log activity in separate, fast transaction (don't wait for it)
+            try:
+                self._log_activity_async(user_id, username, 'user_registered', None, 'New user account created')
+            except:
+                pass
             
             return {'success': True, 'user_id': user_id}
             
-        except sqlite3.IntegrityError as e:
-            conn.rollback()
+        except sqlite3.IntegrityError:
+            if conn:
+                try:
+                    conn.rollback()
+                    conn.close()
+                except:
+                    pass
             return {'success': False, 'error': 'Username or email already exists'}
         except Exception as e:
-            conn.rollback()
-            return {'success': False, 'error': str(e)}
-        finally:
-            conn.close()
+            if conn:
+                try:
+                    conn.rollback()
+                    conn.close()
+                except:
+                    pass
+            return {'success': False, 'error': f'Error: {str(e)}'}
     
     def authenticate_user(self, username, password, ip_address=None):
         """Authenticate user credentials"""
@@ -890,19 +921,26 @@ class UserManager:
             conn.close()
     
     def _log_activity(self, user_id, username, action, ip_address, details):
-        """Log user activity"""
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        
+        """Log user activity - synchronous"""
         try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
             kenya_time = get_kenya_time()
             cursor.execute('''
                 INSERT INTO user_activity (user_id, username, action, timestamp, ip_address, details)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (user_id, username, action, kenya_time, ip_address, details))
             conn.commit()
-        except Exception as e:
-            conn.rollback()
-            print(f"Error logging activity: {e}")
-        finally:
             conn.close()
+        except:
+            pass  # Silent fail - don't block on logging
+    
+    def _log_activity_async(self, user_id, username, action, ip_address, details):
+        """Log user activity - async version (doesn't block)"""
+        import threading
+        def log():
+            try:
+                self._log_activity(user_id, username, action, ip_address, details)
+            except:
+                pass
+        threading.Thread(target=log, daemon=True).start()

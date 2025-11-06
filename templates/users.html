@@ -90,8 +90,6 @@
                 <select id="newRole" required
                         class="w-full px-3 py-2 bg-slate-800/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="viewer">{{ gettext('viewer') }}</option>
-                    <option value="operator">{{ gettext('operator') }}</option>
-                    <option value="analyst">{{ gettext('analyst') }}</option>
                     <option value="admin">{{ gettext('admin') }}</option>
                 </select>
             </div>
@@ -175,8 +173,8 @@ function renderUsers() {
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm">
                 <div class="flex space-x-2">
-                    <button onclick="editUser(${user.id})" 
-                            class="text-blue-400 hover:text-blue-300">
+                    <button onclick="alert('Edit user functionality coming soon')" 
+                            class="text-blue-400 hover:text-blue-300" title="Edit user">
                         <i data-feather="edit" class="w-4 h-4"></i>
                     </button>
                     <button onclick="toggleUserStatus(${user.id}, ${!user.is_active})" 
@@ -227,7 +225,15 @@ document.getElementById('addUserForm').addEventListener('submit', async (e) => {
         role: document.getElementById('newRole').value
     };
     
+    // Show loading state
+    const submitBtn = document.querySelector('#addUserForm button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating...';
+    
     try {
+        console.log('Submitting user creation:', formData);
+        
         const response = await fetch('/api/users', {
             method: 'POST',
             headers: {
@@ -236,18 +242,33 @@ document.getElementById('addUserForm').addEventListener('submit', async (e) => {
             body: JSON.stringify(formData)
         });
         
+        console.log('Response status:', response.status);
         const data = await response.json();
+        console.log('Response data:', data);
         
         if (data.success) {
             hideAddUserModal();
             loadUsers();
             loadActivity();
+            
+            // Show success message
+            const notification = document.createElement('div');
+            notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50';
+            notification.textContent = `User ${formData.username} created successfully!`;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 3000);
         } else {
-            alert('Error: ' + data.error);
+            // Show error message
+            const errorMsg = data.error || 'Failed to create user';
+            alert('Error: ' + errorMsg);
+            console.error('User creation failed:', data);
         }
     } catch (error) {
         console.error('Error creating user:', error);
-        alert('Error creating user');
+        alert('Error creating user: ' + error.message);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
     }
 });
 
@@ -265,10 +286,24 @@ async function toggleUserStatus(userId, newStatus) {
         const data = await response.json();
         
         if (data.success) {
+            // Check if user deactivated themselves - LOGOUT IMMEDIATELY
+            if (data.logged_out) {
+                alert(data.message || 'Your account has been deactivated. You will be logged out.');
+                // Force immediate logout
+                window.location.href = '/logout';
+                return;
+            }
+            
             loadUsers();
             loadActivity();
         } else {
-            alert('Error: ' + data.error);
+            // Check if logged out due to deactivation
+            if (data.logged_out || data.error === 'Account deactivated') {
+                alert('Your account has been deactivated');
+                window.location.href = '/logout';
+                return;
+            }
+            alert('Error: ' + (data.error || 'Unknown error'));
         }
     } catch (error) {
         console.error('Error updating user status:', error);
@@ -276,15 +311,33 @@ async function toggleUserStatus(userId, newStatus) {
     }
 }
 
+// Real-time user list updates
+function setupUserRealtimeUpdates() {
+    if (typeof io !== 'undefined' && window.netwatchRealtime && window.netwatchRealtime.socket) {
+        window.netwatchRealtime.socket.on('user_list_update', (data) => {
+            if (data && data.users) {
+                console.log('User list updated via real-time:', data.action);
+                loadUsers();
+                loadActivity();
+            }
+        });
+    } else {
+        setTimeout(setupUserRealtimeUpdates, 500);
+    }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     loadUsers();
     loadActivity();
+    setupUserRealtimeUpdates();
     
-    // Refresh every 30 seconds
+    // Fallback polling only if socket not connected
     setInterval(() => {
-        loadUsers();
-        loadActivity();
+        if (!window.netwatchRealtime || !window.netwatchRealtime.isConnected) {
+            loadUsers();
+            loadActivity();
+        }
     }, 30000);
 });
 </script>
