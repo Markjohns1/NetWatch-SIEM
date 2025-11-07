@@ -243,6 +243,7 @@ class Database:
     
     def _create_default_admin(self):
         """Create default admin user if none exists"""
+        import os
         conn = self.get_connection()
         cursor = conn.cursor()
         
@@ -251,17 +252,20 @@ class Database:
             user_count = cursor.fetchone()[0]
             
             if user_count == 0:
-                # Create default admin user
-                password_hash = generate_password_hash('admin123')
+                admin_username = os.environ.get('DEFAULT_ADMIN_USERNAME', 'admin')
+                admin_password = os.environ.get('DEFAULT_ADMIN_PASSWORD', 'admin123')
+                admin_email = os.environ.get('DEFAULT_ADMIN_EMAIL', 'admin@netwatch.local')
+                
+                password_hash = generate_password_hash(admin_password)
                 kenya_time = get_kenya_time()
                 
                 cursor.execute('''
                     INSERT INTO users (username, email, password_hash, role, is_active, created_at)
                     VALUES (?, ?, ?, ?, ?, ?)
-                ''', ('admin', 'admin@netwatch.local', password_hash, 'admin', 1, kenya_time))
+                ''', (admin_username, admin_email, password_hash, 'admin', 1, kenya_time))
                 
                 conn.commit()
-                print("\n✓ Default admin user created: admin / admin123")
+                print(f"\n✓ Default admin user created: {admin_username} / {admin_password}")
                 print("  Please change the password after first login!\n")
         except Exception as e:
             conn.rollback()

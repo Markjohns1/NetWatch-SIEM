@@ -21,8 +21,15 @@ The application is fully configured and running in the Replit environment:
 
 ## Default Login Credentials
 **IMPORTANT**: Use these credentials for first login, then change the password immediately!
-- **Username**: `admin`
-- **Password**: `admin123`
+- **Username**: `admin` (can be overridden with `DEFAULT_ADMIN_USERNAME` env var)
+- **Password**: `admin123` (can be overridden with `DEFAULT_ADMIN_PASSWORD` env var)
+
+You can customize these at startup using environment variables:
+```bash
+DEFAULT_ADMIN_USERNAME=myuser
+DEFAULT_ADMIN_PASSWORD=mypassword
+DEFAULT_ADMIN_EMAIL=admin@mydomain.com
+```
 
 ## Key Features
 - Multi-User Authentication with PBKDF2 hashing

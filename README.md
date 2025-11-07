@@ -28,7 +28,7 @@ Access the dashboard at: **http://localhost:5000**
 
 ### Default Login
 - **Username:** `admin`
-- **Password:** `NetWatch2024!`
+- **Password:** `admin123`
 
 ⚠️ **IMPORTANT: Change the password immediately after first login!**
 
@@ -94,7 +94,15 @@ Configure via environment variables:
 export SESSION_SECRET="your_secret_key"
 ```
 
-The default admin user (`admin / NetWatch2024!`) is created automatically on first run. Change the password immediately after logging in.
+The default admin user (`admin / admin123`) is created automatically on first run. You can customize the admin credentials using environment variables:
+
+```bash
+export DEFAULT_ADMIN_USERNAME="yourusername"
+export DEFAULT_ADMIN_PASSWORD="yourpassword"
+export DEFAULT_ADMIN_EMAIL="admin@yourdomain.com"
+```
+
+**Important:** Change the default password immediately after logging in!
 
 Use the web-based configuration panel at `/config` for system settings.
 

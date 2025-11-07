@@ -337,3 +337,8 @@ def validate_threshold(condition_key, threshold_value):
             return False, "Threshold must be a number"
     
     return False, "Unknown threshold type"
+
+
+def validate_threshold_for_condition(condition_key, threshold_value):
+    """Alias for validate_threshold - used by API endpoint"""
+    return validate_threshold(condition_key, threshold_value)

@@ -52,7 +52,7 @@ class AlertEngine:
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT COUNT(*) FROM alerts 
-                WHERE device_id = ? AND alert_type = ? AND is_resolved = 0
+                WHERE device_id = ? AND alert_type = ? AND status = 'active'
             ''', (device_id, rule_name))
             count = cursor.fetchone()[0]
             conn.close()

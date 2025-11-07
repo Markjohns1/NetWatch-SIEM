@@ -72,9 +72,6 @@ def inject_i18n():
     
     return dict(gettext=gettext)
 
-VALID_USERNAME = os.environ.get('ADMIN_USERNAME', 'Mark')
-VALID_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'lizzyjohn')
-
 
 def login_required(f):
     @wraps(f)
