@@ -153,6 +153,7 @@ class Database:
                     password_hash TEXT NOT NULL,
                     role TEXT DEFAULT 'viewer',
                     is_active INTEGER DEFAULT 1,
+                    is_verified INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_login TIMESTAMP,
                     failed_attempts INTEGER DEFAULT 0,
@@ -196,6 +197,11 @@ class Database:
             
             try:
                 cursor.execute('ALTER TABLE devices ADD COLUMN marked_safe INTEGER DEFAULT 0')
+            except sqlite3.OperationalError:
+                pass
+            
+            try:
+                cursor.execute('ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0')
             except sqlite3.OperationalError:
                 pass
             

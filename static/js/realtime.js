@@ -239,13 +239,13 @@ class NetWatchRealtime {
             document.body.appendChild(el);
         }
         
-        const config = {
+        /*const config = {
             'connected': { text: 'Live', color: '#10b981', bg: '#064e3b' },
             'disconnected': { text: 'Offline', color: '#ef4444', bg: '#7f1d1d' },
             'reconnecting': { text: 'Connecting...', color: '#f59e0b', bg: '#78350f' },
             'failed': { text: 'Failed', color: '#ef4444', bg: '#7f1d1d' }
         };
-        
+        */
         const c = config[status] || config['disconnected'];
         el.textContent = c.text;
         el.style.color = c.color;
