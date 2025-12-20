@@ -1,7 +1,7 @@
 from sqlalchemy import String, Integer, DateTime, Boolean, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime
-from ..database import Base
+from database import Base
 
 class Event(Base):
     __tablename__ = "events"

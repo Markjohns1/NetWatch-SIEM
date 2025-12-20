@@ -1,3 +1,4 @@
+# NetWatch-SIEM Main Application
 from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +10,7 @@ from api.devices import router as devices_router
 from api.alerts import router as alerts_router
 from services.scanner_service import scanner_service
 from services.alert_engine import alert_engine
-from database import SessionLocal
+from database import SessionLocal, engine, Base
 from config import settings
 
 app = FastAPI(title=settings.PROJECT_NAME)

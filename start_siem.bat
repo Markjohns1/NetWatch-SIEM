@@ -1,23 +1,31 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
-echo [1/3] Starting NetWatch-SIEM Backend...
-start "NetWatch Backend" cmd /k "cd backend && python -m pip install -r requirements.txt && python -m uvicorn main:app --reload --port 8000"
+echo ===================================================
+echo   NetWatch-SIEM Rapid Deployment Script
+echo ===================================================
 
-echo [2/3] Starting NetWatch-SIEM Frontend...
-:: Clearing cache to avoid build issues
-start "NetWatch Frontend" cmd /k "cd frontend && if exist node_modules (echo Updating packages...) else (echo Installing packages...) && npm install && npm run dev"
+echo [1/3] Launching Backend Server...
+start "NetWatch Backend" cmd /k "cd backend && set PYTHONPATH=. && echo Installing dependencies... && python -m pip install -r requirements.txt && echo Starting FastAPI... && python -m uvicorn main:app --reload --port 8000 || pause"
 
-echo [3/3] Launching Command Center...
-echo Waiting for servers to initialize...
-timeout /t 8 >nul
+echo [2/3] Launching Frontend UI...
+start "NetWatch Frontend" cmd /k "cd frontend && echo Checking packages... && npm install && echo Starting Vite... && npm run dev || pause"
+
+echo [3/3] Orchestrating Browser Launch...
+echo.
+echo Please wait for servers to signal 'Ready'...
+timeout /t 10 >nul
+
+echo Opening Command Center...
 start http://localhost:5173
 start http://localhost:8000/docs
 
 echo.
-echo NetWatch-SIEM is running.
-echo If the browser didn't open automatically, use these links:
-echo Dashboard: http://localhost:5173
-echo API Docs:  http://localhost:8000/docs
+echo ---------------------------------------------------
+echo   Deployment Status: Active
+echo   Dashboard: http://localhost:5173
+echo   API Intelligence: http://localhost:8000/docs
+echo ---------------------------------------------------
 echo.
-pause
+echo Keep this window open or press any key to finish orchestration.
+pause >nul

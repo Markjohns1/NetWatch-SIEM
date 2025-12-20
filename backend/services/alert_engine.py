@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import logging
 
 from models import Device, Alert, Event
@@ -36,7 +36,7 @@ class AlertEngine:
             severity=severity,
             message=message,
             device_id=device_id,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         )
         db.add(alert)
         await db.commit()

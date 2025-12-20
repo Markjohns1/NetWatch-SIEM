@@ -2,9 +2,10 @@ import React from 'react';
 import { Globe, ShieldCheck, ShieldAlert, Cpu } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-export const DeviceTopology = ({ devices }) => {
-    // Simple topology layout: Gateway in center, devices orbiting
-    const gateway = { ip: '192.168.1.1', type: 'gateway' };
+export const DeviceTopology = ({ devices, localIp }) => {
+    // Dynamically derive gateway from local IP if possible
+    const gatewayIp = localIp?.split('.').slice(0, 3).join('.') + '.1' || '192.168.1.1';
+    const gateway = { ip: gatewayIp, type: 'gateway' };
 
     return (
         <div className="relative w-full h-[600px] glass-card overflow-hidden bg-background/50 border-primary/5">

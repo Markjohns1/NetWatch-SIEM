@@ -1,7 +1,7 @@
 from sqlalchemy import String, Integer, DateTime, Boolean, Float
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime
-from ..database import Base
+from database import Base
 
 class Device(Base):
     __tablename__ = "devices"
@@ -14,5 +14,7 @@ class Device(Base):
     first_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_trusted: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_online: Mapped[bool] = mapped_column(Boolean, default=True)
+    open_ports: Mapped[str | None] = mapped_column(String, nullable=True) # Serialized JSON list
     risk_score: Mapped[float] = mapped_column(Float, default=0.0)
     device_name: Mapped[str] = mapped_column(String, nullable=True)
